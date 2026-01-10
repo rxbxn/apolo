@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     headers.set('Authorization', request.headers.get('authorization') || '')
     headers.set('apikey', request.headers.get('apikey') || '')
     
-    const response = await fetch('http://72.61.64.225:8000/auth/v1/token?grant_type=password', {
+    const response = await fetch('https://72-61-64-225.traefik.me/auth/v1/token?grant_type=password', {
       method: 'POST',
       headers,
       body
