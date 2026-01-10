@@ -140,7 +140,7 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                 if (usuario.compromiso_cautivo !== undefined && usuario.compromiso_cautivo !== null) setValue('compromiso_cautivo', usuario.compromiso_cautivo)
                 if (usuario.compromiso_impacto !== undefined && usuario.compromiso_impacto !== null) setValue('compromiso_impacto', usuario.compromiso_impacto)
             } catch (e) {
-                console.debug('No se pudo precargar compromisos desde usuarios:', e)
+                // Error precargando compromisos - continuar sin mostrar error
             }
         }
         preloadCompromisos()

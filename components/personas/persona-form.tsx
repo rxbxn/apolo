@@ -168,7 +168,7 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
             }
           }
         } catch (e) {
-          console.debug('No se pudo sincronizar militante tras actualizar usuario:', e)
+          // Error sincronizando militante - continuar sin mostrar error al usuario
         }
       } else {
         await crear({
@@ -191,7 +191,7 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
             }
           }
         } catch (e) {
-          console.debug('No se pudo sincronizar militante tras crear usuario:', e)
+          // Error sincronizando militante - continuar sin mostrar error al usuario
         }
       }
 

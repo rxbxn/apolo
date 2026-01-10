@@ -45,13 +45,6 @@ export function createAdminClient() {
         process.env.SUPABASE_SERVICE_ROLE_KEY ||
         process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY
 
-    // Logging para debug (solo en desarrollo)
-    if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Debug - Variables de entorno disponibles:')
-        console.log('  NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? '✅ definida' : '❌ no definida')
-        console.log('  SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceRoleKey ? '✅ definida' : '❌ no definida')
-    }
-
     // Validación detallada
     if (!supabaseUrl) {
         throw new Error(
