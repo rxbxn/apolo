@@ -18,7 +18,6 @@ export function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    console.log('🔐 Iniciando login...')
     setIsLoading(true)
     setError("")
 
@@ -28,34 +27,18 @@ export function LoginForm() {
         password: password,
       })
 
-      console.log('📊 Respuesta de Supabase:', { data, error: authError })
-
       if (authError) {
-        console.error('❌ Error de autenticación:', authError)
         throw authError
       }
 
       if (data?.session) {
-        console.log('✅ Login exitoso! Sesión:', data.session)
-        console.log('🍪 Cookies antes de redirigir:', document.cookie)
-
-        // Verificar si la cookie de supabase existe
-        const hasSupabaseCookie = document.cookie.includes('sb-')
-        console.log('🍪 Tiene cookie de Supabase:', hasSupabaseCookie)
-
-        console.log('🔄 Redirigiendo a /dashboard...')
-
-        // Dar más tiempo para que la cookie se asiente
-        setTimeout(() => {
-          window.location.href = '/dashboard'
-        }, 500)
+        // Redirección inmediata
+        window.location.href = '/dashboard'
       } else {
-        console.warn('⚠️ No se obtuvo sesión')
         setError('No se pudo iniciar sesión')
         setIsLoading(false)
       }
     } catch (err: any) {
-      console.error('💥 Error en login:', err)
       setError(err.message || "Error al iniciar sesión")
       setIsLoading(false)
     }
@@ -64,7 +47,7 @@ export function LoginForm() {
   return (
     <Card className="border-0 shadow-lg bg-white">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl text-primary">Bienvenido a APOLO (LOGIN V2)</CardTitle>
+        <CardTitle className="text-2xl text-primary">Bienvenido a APOLO</CardTitle>
         <CardDescription>Ingresa tus credenciales para acceder</CardDescription>
       </CardHeader>
       <CardContent>

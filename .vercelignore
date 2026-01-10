@@ -1,0 +1,36 @@
+# Archivos de documentación
+*.md
+README.md
+
+# Archivos de configuración local
+.env.local
+.env.development
+
+# Scripts de desarrollo
+*.ps1
+*.sh
+dev-on-8080.ps1
+start-on-8080.ps1
+
+# Archivos SQL
+*.sql
+
+# Archivos de test
+test-build.js
+temp_*
+
+# Archivos Docker (si no se usan en Vercel)
+Dockerfile
+docker-compose.yml
+dokploy.json
+force-deploy.sh
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache de dependencias
+node_modules
+.pnpm-store
