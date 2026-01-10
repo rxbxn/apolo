@@ -147,6 +147,49 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData?.usuario_id])
 
+    // Precargar datos cuando se selecciona una persona del dropdown
+    useEffect(() => {
+        async function precargarDatosUsuario() {
+            if (!usuario_id || usuario_id === initialData?.usuario_id) return
+            
+            try {
+                const usuario = await obtenerPersonaPorId(usuario_id)
+                if (!usuario) return
+
+                // Precargar todos los campos relacionados con compromisos
+                if (usuario.compromiso_marketing !== undefined && usuario.compromiso_marketing !== null) {
+                    setValue('compromiso_marketing', usuario.compromiso_marketing)
+                }
+                if (usuario.compromiso_cautivo !== undefined && usuario.compromiso_cautivo !== null) {
+                    setValue('compromiso_cautivo', usuario.compromiso_cautivo)
+                }
+                if (usuario.compromiso_impacto !== undefined && usuario.compromiso_impacto !== null) {
+                    setValue('compromiso_impacto', usuario.compromiso_impacto)
+                }
+
+                // Si la persona ya tiene un tipo de militante asignado en usuario, preseleccionarlo
+                if (usuario.tipo_militante_id && tiposMilitante.length > 0) {
+                    const tipoEncontrado = tiposMilitante.find(t => t.id === usuario.tipo_militante_id)
+                    if (tipoEncontrado) {
+                        setValue('tipo', tipoEncontrado.id)
+                    }
+                }
+
+                // Si tiene coordinador asignado, preseleccionarlo
+                if (usuario.coordinador_id) {
+                    setValue('coordinador_id', usuario.coordinador_id)
+                }
+
+                toast.success("Datos del usuario precargados correctamente")
+            } catch (e) {
+                console.error('Error precargando datos de usuario:', e)
+                toast.error("Error al cargar los datos del usuario")
+            }
+        }
+        precargarDatosUsuario()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [usuario_id, tiposMilitante])
+
     // Normalize initialData.tipo to UUID if necessary (codigo or descripcion -> id)
     useEffect(() => {
         if (!initialData?.tipo || tiposMilitante.length === 0) return
@@ -307,17 +350,15 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                                                         : "[-- Seleccione la Persona --]"}
                                                 </span>
                                                 {usuario_id ? (
-                                                     <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0"
+                                                     <span
+                                                        className="inline-flex items-center justify-center h-6 w-6 p-0 rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer ml-2"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             setValue("usuario_id", "");
                                                         }}
                                                     >
                                                         <X className="h-4 w-4" />
-                                                    </Button>
+                                                    </span>
                                                 ) : (
                                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                                 )}

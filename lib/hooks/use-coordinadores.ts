@@ -194,14 +194,24 @@ export function useCoordinadores() {
         }
     }, [])
 
-    const eliminar = useCallback(async (id: string) => {
+    const eliminar = useCallback(async (email: string) => {
         try {
             setLoading(true)
             setError(null)
 
-            const { error: deleteError } = await supabase.from('coordinadores').delete().eq('id', id)
+            // Enviar el email en el body en lugar de la URL
+            const response = await fetch('/api/coordinador/eliminar', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email })
+            })
 
-            if (deleteError) throw deleteError
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error eliminando coordinador')
+            }
 
             return true
         } catch (err) {

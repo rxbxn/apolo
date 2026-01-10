@@ -43,7 +43,7 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                     <FormItem>
                         <FormLabel>Nombres *</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Juan Carlos" {...field} />
+                            <Input placeholder="Ej: Juan Carlos" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -57,7 +57,7 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                     <FormItem>
                         <FormLabel>Apellidos *</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Pérez Rodríguez" {...field} />
+                            <Input placeholder="Ej: Pérez Rodríguez" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -96,7 +96,7 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                     <FormItem>
                         <FormLabel>Número de Documento *</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: 1234567890" {...field} />
+                            <Input placeholder="Ej: 1234567890" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>

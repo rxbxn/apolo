@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight, Shield, Edit3, Cloud } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useConfirm } from "@/lib/hooks/use-confirm"
 import { usePersonas } from "@/lib/hooks/use-personas"
 import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
 import { useMilitantes } from '@/lib/hooks/use-militantes'
@@ -61,6 +63,7 @@ export function PersonasTable() {
   const { listar, eliminar, loading: personasLoading, cambiarEstado, actualizar, obtenerPorId: obtenerUsuarioPorId } = usePersonas()
   const { ciudades, zonas, loading: catalogosLoading } = useCatalogos()
   const { permisos } = usePermisos("Módulo Personas")
+  const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
   const [personas, setPersonas] = useState<Usuario[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -146,7 +149,16 @@ export function PersonasTable() {
   }
 
   async function handleEliminar(id: string, nombre: string) {
-    if (!confirm(`¿Estás seguro de eliminar a ${nombre}?`)) return
+    const confirmed = await confirm({
+      title: "Eliminar Persona",
+      description: `¿Estás seguro de eliminar a ${nombre}? Esta acción no se puede deshacer y eliminará todos los datos asociados.`,
+      confirmText: "Eliminar",
+      cancelText: "Cancelar",
+      variant: "destructive"
+    })
+
+    if (!confirmed) return
+
     try {
       await eliminar(id)
       toast.success('Persona eliminada exitosamente')
@@ -171,7 +183,8 @@ export function PersonasTable() {
   }
 
   return (
-    <Dialog>
+    <>
+      <Dialog>
       <div className="space-y-4">
         {/* Filtros */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -649,12 +662,23 @@ export function PersonasTable() {
               <Button variant="ghost" onClick={() => setMilitanteModalOpen(false)}>CANCELAR ✖</Button>
               <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
                 try {
-                  if (!militanteData || !(militanteData.id || militanteData.militante_id)) {
-                    toast.error('No hay militante para actualizar')
+                  if (!militanteData) {
+                    toast.error('No hay datos de militante para actualizar')
                     return
                   }
-                  const id = militanteData.id || militanteData.militante_id
+                  
+                  const usuarioId = militanteData.usuario_id
+                  if (!usuarioId) {
+                    console.error('militanteData sin usuario_id:', militanteData)
+                    toast.error('No se puede actualizar: falta el usuario_id del militante')
+                    return
+                  }
+                  
+                  console.log('🔄 Actualizando militante para usuario_id:', usuarioId)
+                  console.log('📋 Datos a enviar:', militanteData)
+                  
                   const payload: any = {
+                    usuario_id: usuarioId, // ID del usuario para buscar el militante
                     tipo: militanteData.tipo,
                     coordinador_id: militanteData.coordinador_id,
                     compromiso_cautivo: militanteData.compromiso_cautivo,
@@ -665,7 +689,8 @@ export function PersonasTable() {
                     estado: militanteData.estado,
                     jefe_debate: militanteData.jefe_debate,
                   }
-                  await actualizarMilitante(id, payload)
+                  // El hook espera un ID como primer parámetro, usamos el usuario_id
+                  await actualizarMilitante(usuarioId, payload)
                   toast.success('Militante actualizado')
                   setMilitanteModalOpen(false)
                   cargarPersonas()
@@ -710,5 +735,20 @@ export function PersonasTable() {
         </DialogContent>
       </Dialog>
     </Dialog>
+
+    {/* Modal de Confirmación */}
+    {config && (
+      <ConfirmDialog
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        title={config.title}
+        description={config.description}
+        confirmText={config.confirmText}
+        cancelText={config.cancelText}
+        variant={config.variant}
+        onConfirm={handleConfirm}
+      />
+    )}
+  </>
   )
 }

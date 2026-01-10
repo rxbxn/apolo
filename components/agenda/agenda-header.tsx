@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 
 export function AgendaHeader() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -52,7 +53,7 @@ export function AgendaHeader() {
       
     } catch (error) {
       console.error("❌ Error guardando evento:", error)
-      alert("Error al guardar el evento: " + (error instanceof Error ? error.message : "Error desconocido"))
+      toast.error("Error al guardar el evento: " + (error instanceof Error ? error.message : "Error desconocido"))
     }
   }
 

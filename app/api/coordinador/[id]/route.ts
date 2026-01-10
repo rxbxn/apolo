@@ -399,27 +399,38 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         const supabase = createClient(cookieStore)
         const adminClient = createAdminClient()
 
-        // Normalize/sanitize id param
-        const rawId = params?.id
-        let id = Array.isArray(rawId) ? rawId[0] : rawId
-        id = typeof id === 'string' ? id.trim().replace(/^"|"$/g, '') : String(id || '')
-
-        // Validar que el id tenga formato UUID
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        if (!id || id.toLowerCase() === 'undefined' || id.toLowerCase() === 'null' || !uuidRegex.test(id)) {
-            console.warn('DELETE /api/coordinador/[id] - id inválido:', rawId)
-            return NextResponse.json({ error: `ID no tiene formato UUID válido: ${rawId}` }, { status: 400 })
+        // Normalize/sanitize email param
+        const rawEmail = params?.id
+        let email = Array.isArray(rawEmail) ? rawEmail[0] : rawEmail
+        email = typeof email === 'string' ? email.trim().replace(/^"|"$/g, '') : String(email || '')
+        
+        // Decodificar el email de la URL
+        try {
+            email = decodeURIComponent(email)
+        } catch (e) {
+            console.warn('Error decodificando email:', e)
         }
 
-        // Obtener el auth_user_id antes de eliminar
-        const { data: coordinador } = await supabase.from('coordinadores').select('auth_user_id').eq('id', id).single()
+        // Validar que el email tenga formato válido
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!email || email.toLowerCase() === 'undefined' || email.toLowerCase() === 'null' || !emailRegex.test(email)) {
+            console.warn('DELETE /api/coordinador/[email] - email inválido:', rawEmail, 'decodificado:', email)
+            return NextResponse.json({ error: `Email no tiene formato válido: ${rawEmail}` }, { status: 400 })
+        }
+
+        // Buscar el coordinador por email para obtener el auth_user_id
+        console.log('🔍 Buscando coordinador con email:', email)
+        const { data: coordinador } = await supabase.from('coordinadores').select('auth_user_id, id').eq('email', email).single()
 
         if (!coordinador) {
+            console.warn('⚠️ Coordinador no encontrado con email:', email)
             return NextResponse.json({ error: 'Coordinador no encontrado' }, { status: 404 })
         }
 
-        // Eliminar coordinador
-        const { error: deleteError } = await supabase.from('coordinadores').delete().eq('id', id)
+        console.log('✅ Coordinador encontrado:', coordinador)
+
+        // Eliminar coordinador usando el ID obtenido
+        const { error: deleteError } = await supabase.from('coordinadores').delete().eq('id', coordinador.id)
 
         if (deleteError) {
             console.error('Error eliminando coordinador:', deleteError)

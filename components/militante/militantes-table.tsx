@@ -13,9 +13,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { useMilitantes } from "@/lib/hooks/use-militantes"
 import { usePermisos } from "@/lib/hooks/use-permisos"
+import { useConfirm } from "@/lib/hooks/use-confirm"
 import { toast } from "sonner"
 
 const getStatusColor = (status: string) => {
@@ -31,6 +33,7 @@ export function MilitantesTable() {
     const router = useRouter()
     const { listar, eliminar, loading } = useMilitantes()
     const { permisos } = usePermisos("Módulo Militante")
+    const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
     const [militantes, setMilitantes] = useState<any[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -66,7 +69,15 @@ export function MilitantesTable() {
     }
 
     async function handleEliminar(id: string, nombre: string) {
-        if (!confirm(`¿Estás seguro de eliminar a ${nombre}?`)) return
+        const confirmed = await confirm({
+            title: "Eliminar Militante",
+            description: `¿Estás seguro de eliminar a ${nombre}? Esta acción no se puede deshacer.`,
+            confirmText: "Eliminar",
+            cancelText: "Cancelar", 
+            variant: "destructive"
+        })
+
+        if (!confirmed) return
 
         try {
             await eliminar(id)
@@ -79,7 +90,8 @@ export function MilitantesTable() {
     }
 
     return (
-        <Card>
+        <>
+            <Card>
             <CardContent className="p-6">
                 <div className="space-y-4">
                     {/* Filtros */}
@@ -229,6 +241,21 @@ export function MilitantesTable() {
                 </div>
             </CardContent>
         </Card>
-    )
+
+        {/* Modal de Confirmación */}
+        {config && (
+            <ConfirmDialog
+                open={isOpen}
+                onOpenChange={setIsOpen}
+                title={config.title}
+                description={config.description}
+                confirmText={config.confirmText}
+                cancelText={config.cancelText}
+                variant={config.variant}
+                onConfirm={handleConfirm}
+            />
+        )}
+    </>
+  )
 }
 

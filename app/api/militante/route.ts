@@ -272,71 +272,77 @@ export async function PATCH(request: NextRequest) {
         const adminClient = createAdminClient()
         const body = await request.json()
 
-        const { id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id, estado } = body
+        const { id, usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id, estado } = body
 
-        // Validate id
+        // El ID que recibimos es el usuario_id (tabla usuarios es la madre)
+        const targetUserId = usuario_id || id
+        
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        if (!id || !uuidRegex.test(id)) return NextResponse.json({ error: 'ID de militante inválido' }, { status: 400 })
-
-        // Fetch existing militante to be able to rollback if needed
-    const { data: existingMilitante, error: existingErr } = await (adminClient as any).from('militantes').select('id, usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id, estado, creado_en, actualizado_en').eq('id', id).single()
-        if (existingErr || !existingMilitante) {
-            return NextResponse.json({ error: 'Militante no encontrado' }, { status: 404 })
+        if (!targetUserId || !uuidRegex.test(targetUserId)) {
+            return NextResponse.json({ error: 'usuario_id inválido' }, { status: 400 })
         }
 
-        // Update militante first
-        const updatePayload: any = {}
-        if (tipo !== undefined) updatePayload.tipo = tipo
-        if (coordinador_id !== undefined) updatePayload.coordinador_id = coordinador_id || null
-        if (compromiso_marketing !== undefined) updatePayload.compromiso_marketing = compromiso_marketing
-        if (compromiso_cautivo !== undefined) updatePayload.compromiso_cautivo = compromiso_cautivo
-        if (compromiso_impacto !== undefined) updatePayload.compromiso_impacto = compromiso_impacto
-        if (formulario !== undefined) updatePayload.formulario = formulario
-        if (perfil_id !== undefined) updatePayload.perfil_id = perfil_id || null
-        if (estado !== undefined) updatePayload.estado = estado
+        console.log(`🔍 Actualizando usuario: ${targetUserId}`)
 
-    const { data: updatedMilitante, error: updateErr } = await (adminClient as any).from('militantes').update(updatePayload).eq('id', id)
-        if (updateErr) {
-            console.error('Error actualizando militante:', updateErr)
-            return NextResponse.json({ error: 'Error actualizando militante' }, { status: 500 })
+        // 1. PRIMERO: Actualizar la tabla USUARIOS (tabla madre)
+        const usuarioUpdatePayload: any = {}
+        if (compromiso_marketing !== undefined) usuarioUpdatePayload.compromiso_marketing = compromiso_marketing
+        if (compromiso_cautivo !== undefined) usuarioUpdatePayload.compromiso_cautivo = compromiso_cautivo
+        if (compromiso_impacto !== undefined) usuarioUpdatePayload.compromiso_impacto = compromiso_impacto
+
+        console.log(`🔄 Actualizando tabla usuarios con:`, usuarioUpdatePayload)
+
+        const { data: updatedUsuario, error: usuarioError } = await (adminClient as any)
+            .from('usuarios')
+            .update(usuarioUpdatePayload)
+            .eq('id', targetUserId)
+            .select()
+
+        if (usuarioError) {
+            console.error('Error actualizando usuario:', usuarioError)
+            return NextResponse.json({ error: 'Error actualizando usuario' }, { status: 500 })
         }
 
-        // Sync usuario fields
-        try {
-            const usuarioId = (updatedMilitante as any).usuario_id
-            if (usuarioId) {
-                // Fetch current usuario compromisos to be able to rollback if needed
-                const { data: usuarioPrev } = await (adminClient as any).from('usuarios').select('compromiso_marketing,compromiso_cautivo,compromiso_impacto').eq('id', usuarioId).single()
+        // 2. SEGUNDO: Actualizar tabla MILITANTES si existe el registro
+        const { data: existingMilitante, error: findError } = await (adminClient as any)
+            .from('militantes')
+            .select('id, usuario_id')
+            .eq('usuario_id', targetUserId)
+            .single()
 
-                const { data: userUpdate, error: userUpdateErr } = await (adminClient as any).from('usuarios').update({
-                    compromiso_marketing: compromiso_marketing ?? (updatedMilitante as any).compromiso_marketing ?? null,
-                    compromiso_cautivo: compromiso_cautivo ?? (updatedMilitante as any).compromiso_cautivo ?? null,
-                    compromiso_impacto: compromiso_impacto ?? (updatedMilitante as any).compromiso_impacto ?? null,
-                }).eq('id', usuarioId)
+        if (!findError && existingMilitante) {
+            console.log(`✅ Militante encontrado, actualizando:`, existingMilitante.id)
+            
+            const militanteUpdatePayload: any = {}
+            if (tipo !== undefined) militanteUpdatePayload.tipo = tipo
+            if (coordinador_id !== undefined) militanteUpdatePayload.coordinador_id = coordinador_id || null
+            if (compromiso_marketing !== undefined) militanteUpdatePayload.compromiso_marketing = compromiso_marketing
+            if (compromiso_cautivo !== undefined) militanteUpdatePayload.compromiso_cautivo = compromiso_cautivo
+            if (compromiso_impacto !== undefined) militanteUpdatePayload.compromiso_impacto = compromiso_impacto
+            if (formulario !== undefined) militanteUpdatePayload.formulario = formulario
+            if (perfil_id !== undefined) militanteUpdatePayload.perfil_id = perfil_id || null
+            if (estado !== undefined) militanteUpdatePayload.estado = estado
 
-                if (userUpdateErr) {
-                    // rollback militante changes
-                    try {
-                        await (adminClient as any).from('militantes').update(existingMilitante).eq('id', id)
-                    } catch (rbErr) {
-                        console.error('Error rolling back militante after usuario update failure:', rbErr)
-                    }
-                    console.error('Error sincronizando usuario tras actualizar militante:', userUpdateErr)
-                    return NextResponse.json({ error: 'Error sincronizando usuario tras actualizar militante' }, { status: 500 })
-                }
+            const { error: militanteError } = await (adminClient as any)
+                .from('militantes')
+                .update(militanteUpdatePayload)
+                .eq('id', existingMilitante.id)
+
+            if (militanteError) {
+                console.error('Error actualizando militante:', militanteError)
+                return NextResponse.json({ error: 'Error actualizando militante' }, { status: 500 })
             }
-        } catch (syncErr) {
-            // rollback militante
-            try {
-                await (adminClient as any).from('militantes').update(existingMilitante).eq('id', id)
-            } catch (rbErr) {
-                console.error('Error rolling back militante after exception in usuario sync:', rbErr)
-            }
-            console.error('Exception synchronizing usuario after updating militante:', syncErr)
-            return NextResponse.json({ error: 'Error sincronizando usuario tras actualizar militante' }, { status: 500 })
+        } else {
+            console.log(`ℹ️ No existe militante para usuario: ${targetUserId}`)
         }
 
-        return NextResponse.json(updatedMilitante)
+        console.log(`✅ Actualización completada para usuario: ${targetUserId}`)
+        
+        return NextResponse.json({ 
+            success: true, 
+            message: 'Usuario y militante actualizados correctamente' 
+        })
+
     } catch (error: any) {
         console.error('Error en PATCH /api/militante:', error)
         return NextResponse.json({ error: `Error interno del servidor: ${error.message || error}` }, { status: 500 })

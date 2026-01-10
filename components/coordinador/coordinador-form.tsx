@@ -289,6 +289,7 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                 }
                 await crear(payload)
                 toast.success("Coordinador creado exitosamente")
+                router.push("/dashboard/coordinador")
             }
 
         } catch (error) {

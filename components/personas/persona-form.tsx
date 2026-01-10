@@ -41,8 +41,9 @@ const personaSchema = z.object({
   localidad_id: z.string().optional(),
   barrio_id: z.string().optional(),
   zona_id: z.string().optional(),
-  puesto_votacion_id: z.string().optional(),
-  mesa_votacion: z.string().optional(),
+  ubicacion_manual: z.boolean().default(false),
+  localidad_nombre: z.string().optional(),
+  barrio_nombre: z.string().optional(),
 
   // Contacto
   email: z.string().email("Email inválido").optional().or(z.literal("")),
@@ -77,6 +78,7 @@ const personaSchema = z.object({
   compromiso_marketing: z.coerce.number().min(0).default(0),
   compromiso_id: z.string().optional(),
   observaciones: z.string().optional(),
+  
   // Estado
   estado: z.enum(['activo', 'inactivo', 'suspendido']).optional(),
 })
@@ -109,14 +111,60 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
   const form = useForm<PersonaFormValues>({
     resolver: zodResolver(personaSchema),
     defaultValues: initialData || {
+      // Datos Personales
       nombres: "",
       apellidos: "",
       tipo_documento: "Cédula",
       numero_documento: "",
+      fecha_nacimiento: "",
+      genero: "",
+      estado_civil: "",
+      
+      // Ubicación
+      direccion: "",
+      ciudad_id: "",
+      localidad_id: "",
+      barrio_id: "",
+      zona_id: "",
+      ubicacion_manual: false,
+      localidad_nombre: "",
+      barrio_nombre: "",
+      
+      // Contacto
+      email: "",
+      celular: "",
+      telefono_fijo: "",
+      whatsapp: "",
+      
+      // Datos Demográficos
+      nivel_escolaridad: "",
+      perfil_ocupacion: "",
+      tipo_vivienda: "",
+      estrato: "",
+      ingresos_rango: "",
+      tiene_hijos: false,
+      numero_hijos: 0,
+      
+      // Redes Sociales
+      facebook: "",
+      instagram: "",
+      twitter: "",
+      linkedin: "",
+      tiktok: "",
+      
+      // Referencias
+      referencia_id: "",
+      tipo_referencia_id: "",
+      lider_responsable: "",
+      
+      // Compromisos
       compromiso_cautivo: 0,
       compromiso_impacto: 0,
       compromiso_marketing: 0,
       compromiso_id: "",
+      observaciones: "",
+      
+      // Estado
       estado: "activo",
     },
   })
@@ -230,18 +278,30 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
   async function openSummary() {
     try {
       const usuarioId = initialData?.id
-      if (!usuarioId) return
+      if (!usuarioId) {
+        console.error('No hay usuarioId en initialData:', initialData)
+        return
+      }
+      
+      console.log('🔍 Buscando militante para usuario:', usuarioId)
+      console.log('📝 Datos iniciales:', initialData)
+      
       const res = await fetch(`/api/militante/summary/${usuarioId}`)
+      console.log('📡 Respuesta API:', { status: res.status, ok: res.ok })
+      
       if (res.ok) {
         const d = await res.json()
+        console.log('✅ Datos de militante encontrados:', d)
         setMilitanteSummary(d)
         setSummaryModalOpen(true)
       } else {
+        const errorText = await res.text()
+        console.log('❌ Error en respuesta API:', errorText)
         setMilitanteSummary(null)
         setSummaryModalOpen(true)
       }
     } catch (e) {
-      console.error(e)
+      console.error('💥 Error en openSummary:', e)
       setMilitanteSummary(null)
       setSummaryModalOpen(true)
     }

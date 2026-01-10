@@ -24,7 +24,7 @@ export function RedesSocialesSection({ form }: RedesSocialesSectionProps) {
                     <FormItem>
                         <FormLabel>Facebook</FormLabel>
                         <FormControl>
-                            <Input placeholder="Usuario o enlace de perfil" {...field} />
+                            <Input placeholder="Usuario o enlace de perfil" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -38,7 +38,7 @@ export function RedesSocialesSection({ form }: RedesSocialesSectionProps) {
                     <FormItem>
                         <FormLabel>Instagram</FormLabel>
                         <FormControl>
-                            <Input placeholder="@usuario" {...field} />
+                            <Input placeholder="@usuario" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -52,7 +52,7 @@ export function RedesSocialesSection({ form }: RedesSocialesSectionProps) {
                     <FormItem>
                         <FormLabel>Twitter (X)</FormLabel>
                         <FormControl>
-                            <Input placeholder="@usuario" {...field} />
+                            <Input placeholder="@usuario" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -66,7 +66,7 @@ export function RedesSocialesSection({ form }: RedesSocialesSectionProps) {
                     <FormItem>
                         <FormLabel>LinkedIn</FormLabel>
                         <FormControl>
-                            <Input placeholder="Enlace de perfil" {...field} />
+                            <Input placeholder="Enlace de perfil" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -80,7 +80,7 @@ export function RedesSocialesSection({ form }: RedesSocialesSectionProps) {
                     <FormItem>
                         <FormLabel>TikTok</FormLabel>
                         <FormControl>
-                            <Input placeholder="@usuario" {...field} />
+                            <Input placeholder="@usuario" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>

@@ -47,7 +47,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Marketing</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} />
+                                <Input type="number" {...field} value={field.value || 0} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -61,7 +61,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Cautivo</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} />
+                                <Input type="number" {...field} value={field.value || 0} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -75,7 +75,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Impacto</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} />
+                                <Input type="number" {...field} value={field.value || 0} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>

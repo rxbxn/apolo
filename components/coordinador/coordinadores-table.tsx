@@ -13,9 +13,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
 import { usePermisos } from "@/lib/hooks/use-permisos"
+import { useConfirm } from "@/lib/hooks/use-confirm"
 import { toast } from "sonner"
 
 const getStatusColor = (status: string) => {
@@ -31,6 +33,7 @@ export function CoordinadoresTable() {
     const router = useRouter()
     const { listar, eliminar, loading } = useCoordinadores()
     const { permisos } = usePermisos("Módulo Coordinador")
+    const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
     const [coordinadores, setCoordinadores] = useState<any[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -66,7 +69,15 @@ export function CoordinadoresTable() {
     }
 
     async function handleEliminar(id: string, nombre: string) {
-        if (!confirm(`¿Estás seguro de eliminar al coordinador ${nombre}?`)) return
+        const confirmed = await confirm({
+            title: "Eliminar Coordinador",
+            description: `¿Estás seguro de eliminar al coordinador ${nombre}? Esta acción no se puede deshacer y también eliminará su acceso al sistema.`,
+            confirmText: "Eliminar",
+            cancelText: "Cancelar",
+            variant: "destructive"
+        })
+
+        if (!confirmed) return
 
         try {
             await eliminar(id)
@@ -212,7 +223,7 @@ export function CoordinadoresTable() {
                                                                 className="w-8 h-8 text-destructive hover:bg-destructive/10"
                                                                 onClick={() =>
                                                                     handleEliminar(
-                                                                        coordinador.coordinador_id,
+                                                                        coordinador.email,
                                                                         `${coordinador.nombres} ${coordinador.apellidos}`
                                                                     )
                                                                 }
@@ -259,6 +270,20 @@ export function CoordinadoresTable() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Modal de Confirmación */}
+            {config && (
+                <ConfirmDialog
+                    open={isOpen}
+                    onOpenChange={setIsOpen}
+                    title={config.title}
+                    description={config.description}
+                    confirmText={config.confirmText}
+                    cancelText={config.cancelText}
+                    variant={config.variant}
+                    onConfirm={handleConfirm}
+                />
+            )}
         </div>
     )
 }

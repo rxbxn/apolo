@@ -92,6 +92,9 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
 
       const merged = {
         ...(militanteAny || {}),
+        // Asegurar que siempre tengamos el ID del militante
+        id: militanteAny?.id,
+        militante_id: militanteAny?.id, // Alias para compatibilidad
         usuario_id: usuarioAny?.id,
         nombres: usuarioAny?.nombres,
         apellidos: usuarioAny?.apellidos,

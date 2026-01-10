@@ -63,7 +63,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                     <FormItem className="md:col-span-2">
                         <FormLabel>Dirección de Residencia</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Cra 45 # 123 - 45" {...field} />
+                            <Input placeholder="Ej: Cra 45 # 123 - 45" {...field} value={field.value || ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -127,7 +127,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Localidad </FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: soledad" {...field} />
+                                    <Input placeholder="Ej: soledad" {...field} value={field.value || ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -141,7 +141,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Barrio</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: Santa Bárbara" {...field} />
+                                    <Input placeholder="Ej: Santa Bárbara" {...field} value={field.value || ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
