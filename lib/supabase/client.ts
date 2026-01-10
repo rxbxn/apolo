@@ -6,7 +6,25 @@ import type { Database } from './database.types'
 let supabaseInstance: SupabaseClient<Database> | null = null
 
 // Variables de entorno con valores por defecto para evitar errores
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+// Configuración dinámica de URL según el entorno
+const getSupabaseUrl = () => {
+  // En desarrollo local, usar HTTP directo
+  if (process.env.NODE_ENV === 'development') {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+  }
+  
+  // En producción, usar proxy HTTPS para evitar mixed content
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+  
+  // Si la URL es HTTP, usar nuestro proxy
+  if (baseUrl.startsWith('http://')) {
+    return window?.location ? `${window.location.origin}/api/supabase-proxy` : baseUrl
+  }
+  
+  return baseUrl
+}
+
+const SUPABASE_URL = getSupabaseUrl()
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
 
 export function createClient(): SupabaseClient<Database> {
