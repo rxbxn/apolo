@@ -1,0 +1,50 @@
+# Git y archivos de desarrollo
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Dependencias
+node_modules
+npm-debug.log*
+
+# Next.js build output
+.next
+out
+
+# Variables de entorno (las importantes van en dokploy.json)
+.env*
+!.env.example
+
+# Cache y logs
+.cache
+*.log
+logs
+.npm
+
+# OS files
+.DS_Store
+*.tgz
+*.tar.gz
+
+# IDE
+.vscode
+.idea
+
+# Testing
+coverage
+.nyc_output
+
+# Temporal files
+*.tmp
+*.temp
+.temp
+.tmp
+
+# Scripts de desarrollo
+force-deploy.sh
+dev-*.sh
+start-on-*.ps1
+*.ps1

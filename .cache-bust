@@ -1,0 +1,5 @@
+# Cache bust for Docker rebuild - Puerto 3000 optimizado
+# Generated on: 2026-01-09 10:30:00
+# 
+# Este archivo fuerza a Docker a reconstruir las capas
+CACHE_BUST=2026-01-09-v4-puerto3000-standalone

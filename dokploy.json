@@ -1,0 +1,30 @@
+{
+  "name": "apolo-crm",
+  "version": "1.0.0", 
+  "type": "dockerfile",
+  "port": 3000,
+  "healthcheck": {
+    "enabled": true,
+    "path": "/api/health",
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3
+  },
+  "environment": {
+    "PORT": "3000",
+    "NODE_ENV": "production",
+    "NEXT_TELEMETRY_DISABLED": "1",
+    "HOSTNAME": "0.0.0.0"
+  },
+  "domains": [],
+  "buildArgs": {
+    "CACHE_BUST": "${BUILD_ID}",
+    "NEXT_PUBLIC_SUPABASE_URL": "${NEXT_PUBLIC_SUPABASE_URL}",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "${NEXT_PUBLIC_SUPABASE_ANON_KEY}",
+    "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}"
+  },
+  "restart": "unless-stopped",
+  "deployOptions": {
+    "host": "0.0.0.0"
+  }
+}
