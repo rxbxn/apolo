@@ -199,20 +199,61 @@ export function useCoordinadores() {
             setLoading(true)
             setError(null)
 
-            // Enviar el email en el body en lugar de la URL
-            const response = await fetch('/api/coordinador/eliminar', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email })
-            })
+            // Usar directamente el cliente de Supabase para mayor confiabilidad
+            console.log('🔍 Eliminando coordinador con email:', email)
 
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.error || 'Error eliminando coordinador')
+            // 1. Buscar el coordinador por email para obtener auth_user_id
+            const { data: coordinador, error: findError } = await supabase
+                .from('coordinadores')
+                .select('auth_user_id, id')
+                .eq('email', email)
+                .single()
+
+            if (findError || !coordinador) {
+                console.warn('⚠️ Coordinador no encontrado con email:', email, 'Error:', findError)
+                throw new Error('Coordinador no encontrado')
             }
 
+            console.log('✅ Coordinador encontrado:', coordinador)
+
+            // 2. Eliminar de la tabla coordinadores primero
+            const { error: deleteError } = await supabase
+                .from('coordinadores')
+                .delete()
+                .eq('id', coordinador.id)
+
+            if (deleteError) {
+                console.error('Error eliminando coordinador:', deleteError)
+                throw new Error('Error eliminando coordinador de la base de datos')
+            }
+
+            console.log('✅ Coordinador eliminado de la tabla')
+
+            // 3. Si tiene auth_user_id, intentar eliminar de Auth (usando API administrativa)
+            if (coordinador.auth_user_id) {
+                try {
+                    console.log('🔥 Intentando eliminar usuario de Auth:', coordinador.auth_user_id)
+                    
+                    // Usar API de Next.js solo para la eliminación de Auth
+                    const response = await fetch('/api/auth/delete-user', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ auth_user_id: coordinador.auth_user_id })
+                    })
+
+                    if (!response.ok) {
+                        console.warn('⚠️ No se pudo eliminar de Auth, pero coordinador eliminado de BD')
+                        // No fallar por esto, ya eliminamos el coordinador de la BD
+                    } else {
+                        console.log('✅ Usuario eliminado de Auth correctamente')
+                    }
+                } catch (authError) {
+                    console.warn('⚠️ Error eliminando de Auth (no crítico):', authError)
+                    // No fallar por esto, ya eliminamos el coordinador de la BD
+                }
+            }
+
+            console.log('✅ Eliminación completada')
             return true
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')

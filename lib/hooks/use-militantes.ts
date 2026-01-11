@@ -6,32 +6,70 @@ import { supabase } from '@/lib/supabase/client'
 interface Militante {
     militante_id: string
     usuario_id: string
-    nombres: string
-    apellidos: string
-    numero_documento: string
-    tipo_documento: string
-    celular: string | null
-    usuario_email: string | null
     tipo: string
     coordinador_id: string | null
-    coordinador_email: string | null
-    coordinador_nombre: string | null
-    compromiso_marketing: string | null
-    compromiso_cautivo: string | null
-    compromiso_impacto: string | null
+    compromiso_marketing: number | null
+    compromiso_cautivo: number | null
+    compromiso_impacto: number | null
     formulario: string | null
-    perfil_id: string | null
-    perfil_nombre: string | null
-    ciudad_nombre: string | null
-    zona_nombre: string | null
     estado: string
     creado_en: string
     actualizado_en: string
+    
+    // Datos del usuario
+    nombres: string
+    apellidos: string
+    tipo_documento: string
+    numero_documento: string
+    email: string | null
+    celular: string | null
+    whatsapp: string | null
+    telefono_fijo: string | null
+    direccion: string | null
+    fecha_nacimiento: string | null
+    genero: string | null
+    estado_civil: string | null
+    
+    // Datos de ubicación
+    ciudad_id: string | null
+    ciudad_nombre: string | null
+    localidad_id: string | null
+    localidad_nombre: string | null
+    barrio_id: string | null
+    barrio_nombre: string | null
+    zona_id: string | null
+    zona_nombre: string | null
+    
+    // Datos demográficos
+    nivel_escolaridad: string | null
+    perfil_ocupacion: string | null
+    tipo_vivienda: string | null
+    estrato: string | null
+    ingresos_rango: string | null
+    tiene_hijos: boolean | null
+    numero_hijos: number | null
+    
+    // Redes sociales
+    facebook: string | null
+    instagram: string | null
+    twitter: string | null
+    linkedin: string | null
+    tiktok: string | null
+    
+    // Otros campos
+    observaciones: string | null
+    lider_responsable: string | null
+    
+    // Información del coordinador
+    coordinador_email: string | null
+    coordinador_nombre: string | null
 }
 
 interface FiltrosMilitantes {
     busqueda?: string
     estado?: string
+    tipo?: string
+    coordinador_id?: string
 }
 
 interface CrearMilitanteData {
@@ -42,7 +80,6 @@ interface CrearMilitanteData {
     compromiso_cautivo?: string
     compromiso_impacto?: string
     formulario?: string
-    perfil_id?: string
 }
 
 interface ActualizarMilitanteData {
@@ -52,7 +89,6 @@ interface ActualizarMilitanteData {
     compromiso_cautivo?: string
     compromiso_impacto?: string
     formulario?: string
-    perfil_id?: string
     estado?: string
 }
 
