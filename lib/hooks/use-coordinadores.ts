@@ -20,6 +20,9 @@ interface Coordinador {
     perfil_id: string | null
     referencia_id: string | null
     referencia_nombre: string | null
+    password?: string | null
+    auth_user_id?: string | null
+    incomplete?: boolean
     creado_en: string
     actualizado_en: string
 }
@@ -119,14 +122,114 @@ export function useCoordinadores() {
                 throw new Error(`ID no tiene formato UUID válido: ${id}`)
             }
 
-            const response = await fetch(`/api/coordinador/${normalizedId}`)
-            if (!response.ok) {
-                const errData = await response.json()
-                throw new Error(errData.error || 'Error al obtener coordinador')
+            // Usar cliente de Supabase directamente para obtener coordinador
+            const { data: coordData, error: coordError } = await supabase
+                .from('coordinadores')
+                .select('*')
+                .eq('id', normalizedId)
+                .single()
+
+            if (coordError) {
+                console.error('Error obteniendo coordinador:', coordError)
+                throw new Error('Error al obtener coordinador')
             }
 
-            const data = await response.json()
-            return data as Coordinador
+            if (!coordData) {
+                throw new Error('Coordinador no encontrado')
+            }
+
+            // Obtener información del usuario asociado
+            let usuarioInfo: any = null
+            if (coordData.usuario_id) {
+                const { data: uData } = await supabase
+                    .from('usuarios')
+                    .select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email, ciudad_id, zona_id')
+                    .eq('id', coordData.usuario_id)
+                    .single()
+                
+                if (uData) usuarioInfo = uData
+            }
+
+            // Obtener nombre del perfil
+            let perfilNombre: string | null = null
+            if (coordData.perfil_id) {
+                const { data: pData } = await supabase
+                    .from('perfiles')
+                    .select('nombre')
+                    .eq('id', coordData.perfil_id)
+                    .single()
+                
+                if (pData) perfilNombre = pData.nombre
+            }
+
+            // Obtener ciudad y zona
+            let ciudadNombre: string | null = null
+            let zonaNombre: string | null = null
+            if (usuarioInfo?.ciudad_id) {
+                const { data: cData } = await supabase
+                    .from('ciudades')
+                    .select('nombre')
+                    .eq('id', usuarioInfo.ciudad_id)
+                    .single()
+                
+                if (cData) ciudadNombre = cData.nombre
+            }
+            if (usuarioInfo?.zona_id) {
+                const { data: zData } = await supabase
+                    .from('zonas')
+                    .select('nombre')
+                    .eq('id', usuarioInfo.zona_id)
+                    .single()
+                
+                if (zData) zonaNombre = zData.nombre
+            }
+
+            // Obtener referencia
+            let referenciaNombre: string | null = null
+            if (coordData.referencia_coordinador_id) {
+                const { data: refData } = await supabase
+                    .from('coordinadores')
+                    .select('usuario_id')
+                    .eq('id', coordData.referencia_coordinador_id)
+                    .single()
+
+                if (refData?.usuario_id) {
+                    const { data: refUser } = await supabase
+                        .from('usuarios')
+                        .select('nombres, apellidos')
+                        .eq('id', refData.usuario_id)
+                        .single()
+
+                    if (refUser) referenciaNombre = `${refUser.nombres} ${refUser.apellidos}`
+                }
+            }
+
+            const coordinador = {
+                coordinador_id: coordData.id,
+                email: coordData.email,
+                estado: coordData.estado,
+                usuario_id: coordData.usuario_id,
+                nombres: usuarioInfo?.nombres || null,
+                apellidos: usuarioInfo?.apellidos || null,
+                numero_documento: usuarioInfo?.numero_documento || null,
+                tipo_documento: usuarioInfo?.tipo_documento || null,
+                celular: usuarioInfo?.celular || null,
+                ciudad_nombre: ciudadNombre,
+                zona_nombre: zonaNombre,
+                rol: perfilNombre || null,
+                perfil_id: coordData.perfil_id,
+                referencia_coordinador_id: coordData.referencia_coordinador_id,
+                referencia_id: coordData.referencia_coordinador_id,
+                referencia_nombre: referenciaNombre,
+                tipo: coordData.tipo || null,
+                auth_user_id: coordData.auth_user_id || null,
+                password: coordData.password || null, // Incluir password
+                creado_en: coordData.creado_en,
+                actualizado_en: coordData.actualizado_en,
+                incomplete: !usuarioInfo,
+            }
+
+            return coordinador as Coordinador
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
             setError(error)
