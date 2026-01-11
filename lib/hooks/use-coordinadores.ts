@@ -295,12 +295,12 @@ export function useCoordinadores() {
                 }
             }
 
-            // 1. Crear usuario en Auth usando signup público (si tiene contraseña)
+            // 1. Crear usuario en Auth (método directo API)
             let authUserId = null
             if (coordinadorData.password) {
                 console.log('🔐 API 1: Creando usuario de autenticación para:', coordinadorData.email)
                 
-                const authResponse = await fetch('/api/auth/signup-coordinator', {
+                const authResponse = await fetch('/api/auth/create-user-direct', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -309,22 +309,19 @@ export function useCoordinadores() {
                     })
                 })
 
-                if (!authResponse.ok) {
+                if (authResponse.ok) {
+                    const authResult = await authResponse.json()
+                    authUserId = authResult.auth_user_id
+                    console.log('✅ Usuario de autenticación creado con ID:', authUserId)
+                    console.log('� Método usado:', authResult.method)
+                } else {
                     const errorData = await authResponse.json()
-                    console.error('❌ Error en signup coordinador:', errorData)
-                    throw new Error(`Fallo en creación de usuario: ${errorData.error}`)
-                }
-
-                const authResult = await authResponse.json()
-                authUserId = authResult.auth_user_id
-                console.log('✅ Usuario de autenticación creado con ID:', authUserId)
-                
-                if (authResult.needs_confirmation) {
-                    console.log('⚠️ Usuario creado pero requiere confirmación de email')
+                    console.warn('⚠️ No se pudo crear usuario de auth:', errorData.error)
+                    console.log('📋 Continuando sin autenticación (se puede agregar después)')
                 }
             }
 
-            // 2. Crear coordinador en base de datos (API 2)
+            // 2. Crear coordinador en base de datos
             console.log('📋 API 2: Insertando coordinador en base de datos')
             console.log('📋 Datos del coordinador:', {
                 usuario_id: coordinadorData.usuario_id,
@@ -340,7 +337,7 @@ export function useCoordinadores() {
                 tipo: coordinadorData.tipo,
                 perfil_id: coordinadorData.perfil_id || null,
                 referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
-                auth_user_id: authUserId
+                auth_user_id: authUserId // null si no se pudo crear auth
             }
 
             const { data: coordinadorCreated, error: coordinadorError } = await supabase
@@ -353,10 +350,9 @@ export function useCoordinadores() {
                 console.error('- Código:', coordinadorError.code)
                 console.error('- Mensaje:', coordinadorError.message)
                 console.error('- Detalles:', coordinadorError.details)
-                console.error('- Hint:', coordinadorError.hint)
                 console.error('- Payload enviado:', coordinadorPayload)
                 
-                // Limpieza: eliminar usuario de Auth si se creó
+                // Cleanup: eliminar usuario de Auth si se creó
                 if (authUserId) {
                     console.log('🧹 Ejecutando limpieza de usuario de autenticación...')
                     try {
@@ -381,6 +377,13 @@ export function useCoordinadores() {
 
             const coordinador = coordinadorCreated[0] || coordinadorCreated
             console.log('✅ Coordinador creado exitosamente:', coordinador)
+
+            // Mensaje según si se creó auth o no
+            if (authUserId) {
+                console.log('🎉 Coordinador creado CON usuario de autenticación')
+            } else {
+                console.log('💡 Coordinador creado SIN usuario de autenticación (se puede agregar después)')
+            }
             
             return {
                 ...coordinador,
