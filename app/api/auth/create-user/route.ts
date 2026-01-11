@@ -1,40 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAuthUser } from '@/lib/supabase/admin-utils'
 
 export async function POST(request: NextRequest) {
     try {
-        const adminClient = createAdminClient()
-        
         // Leer los datos del body
-        const { email, password } = await request.json()
+        const { email, password, metadata } = await request.json()
 
         if (!email || !password) {
             return NextResponse.json({ error: 'Email y contraseña son requeridos' }, { status: 400 })
         }
 
-        console.log('🔐 Creando usuario de Auth:', email)
+        console.log('🔐 Iniciando creación de usuario de Auth:', email)
 
-        // Crear usuario en Auth usando el cliente administrativo
-        const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true, // Confirmar email automáticamente
+        // Usar la nueva función que maneja fallbacks
+        const { user, error } = await createAuthUser({ 
+            email, 
+            password, 
+            metadata 
         })
 
-        if (authError) {
-            console.error('Error creando usuario de Auth:', authError)
-            return NextResponse.json({ error: authError.message }, { status: 500 })
+        if (error) {
+            console.error('❌ Error creando usuario de Auth:', error.message)
+            return NextResponse.json({ 
+                error: error.message,
+                type: 'auth_creation_failed'
+            }, { status: 500 })
         }
 
-        console.log('✅ Usuario de Auth creado correctamente:', authUser.user?.id)
+        if (!user) {
+            return NextResponse.json({ 
+                error: 'No se pudo crear el usuario',
+                type: 'no_user_returned'
+            }, { status: 500 })
+        }
+
+        console.log('✅ Usuario de Auth creado correctamente:', user.id)
         
         return NextResponse.json({ 
             success: true, 
-            auth_user_id: authUser.user?.id,
-            user: authUser.user
+            auth_user_id: user.id,
+            user: user
         })
     } catch (error) {
-        console.error('Error en POST /api/auth/create-user:', error)
-        return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+        console.error('❌ Error en POST /api/auth/create-user:', error)
+        return NextResponse.json({ 
+            error: 'Error interno del servidor',
+            message: error instanceof Error ? error.message : 'Error desconocido',
+            type: 'internal_server_error'
+        }, { status: 500 })
     }
 }

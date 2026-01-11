@@ -1,31 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { deleteAuthUser } from '@/lib/supabase/admin-utils'
 
 export async function DELETE(request: NextRequest) {
     try {
-        const adminClient = createAdminClient()
+        // Leer el auth_user_id del body o query params
+        const { searchParams } = new URL(request.url)
+        let authUserId = searchParams.get('auth_user_id') || searchParams.get('userId')
         
-        // Leer el auth_user_id del body
-        const { auth_user_id } = await request.json()
+        if (!authUserId) {
+            const body = await request.json().catch(() => ({}))
+            authUserId = body.auth_user_id || body.userId
+        }
 
-        if (!auth_user_id) {
+        if (!authUserId) {
             return NextResponse.json({ error: 'auth_user_id es requerido' }, { status: 400 })
         }
 
-        console.log('🔥 Eliminando usuario de Auth:', auth_user_id)
+        console.log('�️ Iniciando eliminación de usuario de Auth:', authUserId)
 
-        // Eliminar usuario de Auth usando el cliente administrativo
-        const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(auth_user_id)
+        // Usar la función que maneja fallbacks
+        const { success, error } = await deleteAuthUser(authUserId)
 
-        if (authDeleteError) {
-            console.error('Error eliminando usuario de Auth:', authDeleteError)
-            return NextResponse.json({ error: authDeleteError.message }, { status: 500 })
+        if (!success) {
+            console.error('❌ Error eliminando usuario de Auth:', error?.message)
+            return NextResponse.json({ 
+                error: error?.message || 'Error eliminando usuario',
+                type: 'auth_deletion_failed'
+            }, { status: 500 })
         }
 
-        console.log('✅ Usuario eliminado de Auth correctamente')
-        return NextResponse.json({ success: true })
+        console.log('✅ Usuario de Auth eliminado correctamente')
+        
+        return NextResponse.json({ 
+            success: true,
+            message: 'Usuario eliminado correctamente'
+        })
     } catch (error) {
-        console.error('Error en DELETE /api/auth/delete-user:', error)
-        return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+        console.error('❌ Error en DELETE /api/auth/delete-user:', error)
+        return NextResponse.json({ 
+            error: 'Error interno del servidor',
+            message: error instanceof Error ? error.message : 'Error desconocido',
+            type: 'internal_server_error'
+        }, { status: 500 })
     }
 }
