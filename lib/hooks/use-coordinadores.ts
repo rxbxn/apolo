@@ -244,21 +244,82 @@ export function useCoordinadores() {
             setLoading(true)
             setError(null)
 
-            const response = await fetch('/api/coordinador', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(coordinadorData),
-            })
-
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.error || 'Error al crear coordinador')
+            // Validaciones básicas
+            if (!coordinadorData.usuario_id || !coordinadorData.email || !coordinadorData.tipo) {
+                throw new Error('Faltan campos requeridos: usuario_id, email y tipo son obligatorios')
             }
 
-            const data = await response.json()
-            return data
+            // Validar formato UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!uuidRegex.test(coordinadorData.usuario_id)) {
+                throw new Error(`usuario_id no tiene formato UUID válido: ${coordinadorData.usuario_id}`)
+            }
+
+            // Verificar que el usuario existe
+            const { data: usuario, error: usuarioError } = await supabase
+                .from('usuarios')
+                .select('id, nombres, apellidos, numero_documento, email')
+                .eq('id', coordinadorData.usuario_id)
+                .single()
+
+            if (usuarioError || !usuario) {
+                console.error(`❌ Usuario no encontrado. ID: ${coordinadorData.usuario_id}, Error:`, usuarioError)
+                throw new Error('Usuario no encontrado')
+            }
+
+            // Verificar que el email no esté registrado
+            const { data: emailExistente } = await supabase
+                .from('coordinadores')
+                .select('id')
+                .eq('email', coordinadorData.email)
+                .single()
+
+            if (emailExistente) {
+                throw new Error('El email ya está registrado')
+            }
+
+            // Verificar referencia_coordinador_id si se proporciona
+            if (coordinadorData.referencia_coordinador_id) {
+                if (!uuidRegex.test(coordinadorData.referencia_coordinador_id)) {
+                    throw new Error(`referencia_coordinador_id no tiene formato UUID válido: ${coordinadorData.referencia_coordinador_id}`)
+                }
+
+                const { data: coordinadorRef, error: refError } = await supabase
+                    .from('coordinadores')
+                    .select('id')
+                    .eq('id', coordinadorData.referencia_coordinador_id)
+                    .single()
+
+                if (refError || !coordinadorRef) {
+                    throw new Error(`El coordinador de referencia no existe con ID: ${coordinadorData.referencia_coordinador_id}`)
+                }
+            }
+
+            // Crear coordinador usando cliente directo de Supabase
+            const insertPayload: any = {
+                usuario_id: coordinadorData.usuario_id,
+                email: coordinadorData.email,
+                password: coordinadorData.password,
+                tipo: coordinadorData.tipo,
+                perfil_id: coordinadorData.perfil_id || null,
+                referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
+                // auth_user_id se asignará por separado
+            }
+
+            const { data: coordinadorCreated, error: coordinadorError } = await supabase
+                .from('coordinadores')
+                .insert(insertPayload)
+                .select()
+                .single()
+
+            if (coordinadorError) {
+                console.error('Error creando coordinador:', coordinadorError)
+                throw new Error(coordinadorError.message)
+            }
+
+            console.log('✅ Coordinador creado exitosamente:', coordinadorCreated)
+            return coordinadorCreated
+
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
             setError(error)
@@ -273,21 +334,28 @@ export function useCoordinadores() {
             setLoading(true)
             setError(null)
 
-            const response = await fetch(`/api/coordinador/${id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(coordinadorData),
-            })
-
-            if (!response.ok) {
-                const errData = await response.json()
-                throw new Error(errData.error || 'Error al actualizar coordinador')
+            // Validar formato UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!id || !uuidRegex.test(id)) {
+                throw new Error(`ID no tiene formato UUID válido: ${id}`)
             }
 
-            const data = await response.json()
-            return data
+            // Usar cliente de Supabase directamente
+            const { data: coordinadorActualizado, error: updateError } = await supabase
+                .from('coordinadores')
+                .update(coordinadorData)
+                .eq('id', id)
+                .select()
+                .single()
+
+            if (updateError) {
+                console.error('Error actualizando coordinador:', updateError)
+                throw new Error(updateError.message || 'Error al actualizar coordinador')
+            }
+
+            console.log('✅ Coordinador actualizado exitosamente:', coordinadorActualizado)
+            return coordinadorActualizado
+
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
             setError(error)
