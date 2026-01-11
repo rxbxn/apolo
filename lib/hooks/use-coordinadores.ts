@@ -295,7 +295,37 @@ export function useCoordinadores() {
                 }
             }
 
-            // Crear coordinador usando cliente directo de Supabase
+            // 1. Crear usuario en Auth usando la API administrativa (si tiene contraseña)
+            let authUserId = null
+            if (coordinadorData.password) {
+                try {
+                    console.log('🔐 Creando usuario de Auth:', coordinadorData.email)
+                    
+                    const response = await fetch('/api/auth/create-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            email: coordinadorData.email, 
+                            password: coordinadorData.password 
+                        })
+                    })
+
+                    if (response.ok) {
+                        const authResult = await response.json()
+                        authUserId = authResult.auth_user_id
+                        console.log('✅ Usuario de Auth creado:', authUserId)
+                    } else {
+                        const errorData = await response.json()
+                        console.warn('⚠️ Error creando usuario de Auth:', errorData.error)
+                        // Continuamos sin auth_user_id, no es crítico
+                    }
+                } catch (authError) {
+                    console.warn('⚠️ Error creando usuario de Auth (no crítico):', authError)
+                    // Continuamos sin auth_user_id, no es crítico
+                }
+            }
+
+            // 2. Crear coordinador usando cliente directo de Supabase
             const insertPayload: any = {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
@@ -303,7 +333,7 @@ export function useCoordinadores() {
                 tipo: coordinadorData.tipo,
                 perfil_id: coordinadorData.perfil_id || null,
                 referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
-                // auth_user_id se asignará por separado
+                auth_user_id: authUserId, // Vincular con usuario de Auth si se creó
             }
 
             const { data: coordinadorCreated, error: coordinadorError } = await supabase
@@ -314,11 +344,32 @@ export function useCoordinadores() {
 
             if (coordinadorError) {
                 console.error('Error creando coordinador:', coordinadorError)
+                
+                // Si se creó el usuario de Auth pero falló el coordinador, intentar eliminar el usuario
+                if (authUserId) {
+                    try {
+                        console.log('🧹 Limpiando usuario de Auth debido a error en coordinador')
+                        await fetch('/api/auth/delete-user', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ auth_user_id: authUserId })
+                        })
+                        console.log('✅ Usuario de Auth eliminado en cleanup')
+                    } catch (cleanupError) {
+                        console.warn('⚠️ Error eliminando usuario de Auth en cleanup:', cleanupError)
+                    }
+                }
+                
                 throw new Error(coordinadorError.message)
             }
 
             console.log('✅ Coordinador creado exitosamente:', coordinadorCreated)
-            return coordinadorCreated
+            
+            return {
+                ...coordinadorCreated,
+                auth_created: !!authUserId,
+                auth_user_id: authUserId
+            }
 
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
