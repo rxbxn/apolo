@@ -146,9 +146,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const adminClient = createAdminClient()
+        console.log(`🔧 AdminClient creado:`, !!adminClient)
+        
         const body = await request.json()
 
+        console.log(`🚀 POST /api/militante - Datos recibidos:`, body)
+
         let { usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id } = body
+
+        console.log(`🔍 usuario_id extraído: "${usuario_id}", tipo: "${tipo}"`)
 
         // Validaciones básicas
         if (!usuario_id || !tipo) {
@@ -170,13 +176,18 @@ export async function POST(request: NextRequest) {
         if (coordinador_id === "") coordinador_id = null;
 
         // Verificar que el usuario existe
+        console.log(`🔍 POST /api/militante - Buscando usuario: ${usuario_id}`)
         const { data: usuario, error: usuarioError } = await (adminClient as any)
             .from('usuarios')
             .select('id, nombres, apellidos')
             .eq('id', usuario_id)
             .single()
 
+        console.log(`🔍 Usuario encontrado:`, usuario)
+        console.log(`🔍 Error de usuario:`, usuarioError)
+
         if (usuarioError || !usuario) {
+            console.error(`❌ Usuario no encontrado. ID: ${usuario_id}, Error:`, usuarioError)
             return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
         }
 
