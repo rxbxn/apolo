@@ -298,69 +298,64 @@ export function useCoordinadores() {
             // 1. Crear usuario en Auth usando la API administrativa (si tiene contraseña)
             let authUserId = null
             if (coordinadorData.password) {
-                try {
-                    console.log('🔐 Creando usuario de Auth:', coordinadorData.email)
-                    
-                    const response = await fetch('/api/auth/create-user', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            email: coordinadorData.email, 
-                            password: coordinadorData.password 
-                        })
+                console.log('🔐 API 1: Creando usuario de autenticación para:', coordinadorData.email)
+                
+                const authResponse = await fetch('/api/auth/create-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: coordinadorData.email, 
+                        password: coordinadorData.password 
                     })
+                })
 
-                    if (response.ok) {
-                        const authResult = await response.json()
-                        authUserId = authResult.auth_user_id
-                        console.log('✅ Usuario de Auth creado:', authUserId)
-                    } else {
-                        const errorData = await response.json()
-                        console.warn('⚠️ Error creando usuario de Auth:', errorData.error)
-                        // Continuamos sin auth_user_id, no es crítico
-                    }
-                } catch (authError) {
-                    console.warn('⚠️ Error creando usuario de Auth (no crítico):', authError)
-                    // Continuamos sin auth_user_id, no es crítico
+                if (!authResponse.ok) {
+                    const errorData = await authResponse.json()
+                    throw new Error(`Fallo en creación de usuario de autenticación: ${errorData.error}`)
                 }
+
+                const authResult = await authResponse.json()
+                authUserId = authResult.auth_user_id
+                console.log('✅ Usuario de autenticación creado con ID:', authUserId)
             }
 
-            // 2. Crear coordinador usando cliente directo de Supabase
-            const insertPayload: any = {
+            // 2. Crear coordinador en base de datos (API 2)
+            console.log('📋 API 2: Insertando coordinador en base de datos')
+            const coordinadorPayload = {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
                 password: coordinadorData.password,
                 tipo: coordinadorData.tipo,
                 perfil_id: coordinadorData.perfil_id || null,
                 referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
-                auth_user_id: authUserId, // Vincular con usuario de Auth si se creó
+                auth_user_id: authUserId
             }
 
             const { data: coordinadorCreated, error: coordinadorError } = await supabase
                 .from('coordinadores')
-                .insert(insertPayload)
+                .insert(coordinadorPayload)
                 .select()
                 .single()
 
             if (coordinadorError) {
-                console.error('Error creando coordinador:', coordinadorError)
+                console.error('❌ Error en inserción de coordinador:', coordinadorError)
                 
-                // Si se creó el usuario de Auth pero falló el coordinador, intentar eliminar el usuario
+                // Limpieza: eliminar usuario de Auth si se creó
                 if (authUserId) {
+                    console.log('🧹 Ejecutando limpieza de usuario de autenticación...')
                     try {
-                        console.log('🧹 Limpiando usuario de Auth debido a error en coordinador')
                         await fetch('/api/auth/delete-user', {
                             method: 'DELETE',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ auth_user_id: authUserId })
                         })
-                        console.log('✅ Usuario de Auth eliminado en cleanup')
+                        console.log('✅ Usuario de autenticación eliminado en limpieza')
                     } catch (cleanupError) {
-                        console.warn('⚠️ Error eliminando usuario de Auth en cleanup:', cleanupError)
+                        console.warn('⚠️ Error en limpieza de usuario de autenticación:', cleanupError)
                     }
                 }
                 
-                throw new Error(coordinadorError.message)
+                throw new Error(`Error en inserción de coordinador: ${coordinadorError.message}`)
             }
 
             console.log('✅ Coordinador creado exitosamente:', coordinadorCreated)
