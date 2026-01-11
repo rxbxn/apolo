@@ -65,35 +65,44 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Usar la API route en lugar de consultar directamente
-            const params = new URLSearchParams({
-                page: page.toString(),
-                pageSize: pageSize.toString(),
-            })
+            // Usar directamente el cliente de Supabase en lugar de la API route
+            let query = supabase
+                .from('v_militantes_completo')
+                .select('*', { count: 'exact' })
 
+            // Aplicar filtros
             if (filtros.busqueda) {
-                params.append('busqueda', filtros.busqueda)
+                query = query.or(`nombres.ilike.%${filtros.busqueda}%,apellidos.ilike.%${filtros.busqueda}%,numero_documento.ilike.%${filtros.busqueda}%`)
             }
 
             if (filtros.estado) {
-                params.append('estado', filtros.estado)
+                query = query.eq('estado', filtros.estado)
             }
 
-            const response = await fetch(`/api/militante?${params.toString()}`)
-
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.error || 'Error al listar militantes')
+            if (filtros.tipo) {
+                query = query.eq('tipo', filtros.tipo)
             }
 
-            const result = await response.json()
+            if (filtros.coordinador_id) {
+                query = query.eq('coordinador_id', filtros.coordinador_id)
+            }
+
+            // Paginación
+            const from = (page - 1) * pageSize
+            const to = from + pageSize - 1
+
+            const { data, error, count } = await query
+                .order('creado_en', { ascending: false })
+                .range(from, to)
+
+            if (error) throw error
 
             return {
-                data: (result.data as Militante[]) || [],
-                count: result.count || 0,
-                page: result.page || page,
-                pageSize: result.pageSize || pageSize,
-                totalPages: result.totalPages || Math.ceil((result.count || 0) / pageSize),
+                data: (data as Militante[]) || [],
+                count: count || 0,
+                page,
+                pageSize,
+                totalPages: Math.ceil((count || 0) / pageSize),
             }
         } catch (err) {
             console.error('Error completo en listar militantes:', err)
@@ -273,19 +282,13 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Usar API administrativo para eliminación
-            const response = await fetch('/api/militante/eliminar', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ id })
-            })
+            // Usar cliente de Supabase directamente
+            const { error: deleteError } = await supabase
+                .from('militantes')
+                .delete()
+                .eq('id', id)
 
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.error || 'Error eliminando militante')
-            }
+            if (deleteError) throw deleteError
 
             return true
         } catch (err) {
