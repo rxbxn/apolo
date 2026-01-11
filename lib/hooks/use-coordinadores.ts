@@ -300,7 +300,7 @@ export function useCoordinadores() {
             if (coordinadorData.password) {
                 console.log('🔐 API 1: Creando usuario de autenticación para:', coordinadorData.email)
                 
-                const authResponse = await fetch('/api/auth/create-user-direct', {
+                const authResponse = await fetch('/api/auth/create-user-admin', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
