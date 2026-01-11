@@ -295,12 +295,12 @@ export function useCoordinadores() {
                 }
             }
 
-            // 1. Crear usuario en Auth usando la API administrativa (si tiene contraseña)
+            // 1. Crear usuario en Auth usando signup público (si tiene contraseña)
             let authUserId = null
             if (coordinadorData.password) {
                 console.log('🔐 API 1: Creando usuario de autenticación para:', coordinadorData.email)
                 
-                const authResponse = await fetch('/api/auth/create-user', {
+                const authResponse = await fetch('/api/auth/signup-coordinator', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -311,24 +311,26 @@ export function useCoordinadores() {
 
                 if (!authResponse.ok) {
                     const errorData = await authResponse.json()
-                    throw new Error(`Fallo en creación de usuario de autenticación: ${errorData.error}`)
+                    console.error('❌ Error en signup coordinador:', errorData)
+                    throw new Error(`Fallo en creación de usuario: ${errorData.error}`)
                 }
 
                 const authResult = await authResponse.json()
                 authUserId = authResult.auth_user_id
                 console.log('✅ Usuario de autenticación creado con ID:', authUserId)
+                
+                if (authResult.needs_confirmation) {
+                    console.log('⚠️ Usuario creado pero requiere confirmación de email')
+                }
             }
 
             // 2. Crear coordinador en base de datos (API 2)
             console.log('📋 API 2: Insertando coordinador en base de datos')
-            console.log('📋 Payload completo:', {
+            console.log('📋 Datos del coordinador:', {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
                 tipo: coordinadorData.tipo,
-                perfil_id: coordinadorData.perfil_id || null,
-                referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
-                auth_user_id: authUserId,
-                hasPassword: !!coordinadorData.password
+                tiene_auth: !!authUserId
             })
             
             const coordinadorPayload = {
@@ -358,12 +360,12 @@ export function useCoordinadores() {
                 if (authUserId) {
                     console.log('🧹 Ejecutando limpieza de usuario de autenticación...')
                     try {
-                        await fetch('/api/auth/delete-user', {
+                        await fetch('/api/auth/delete-coordinator', {
                             method: 'DELETE',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ auth_user_id: authUserId })
                         })
-                        console.log('✅ Usuario de autenticación eliminado en limpieza')
+                        console.log('✅ Usuario de autenticación marcado para eliminación')
                     } catch (cleanupError) {
                         console.warn('⚠️ Error en limpieza de usuario de autenticación:', cleanupError)
                     }
