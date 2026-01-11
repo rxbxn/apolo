@@ -261,21 +261,90 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            const response = await fetch('/api/militante', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(militanteData),
-            })
-
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.error || 'Error al crear militante')
+            // Validaciones básicas
+            if (!militanteData.usuario_id || !militanteData.tipo) {
+                throw new Error('Faltan campos requeridos: usuario_id y tipo son obligatorios')
             }
 
-            const data = await response.json()
-            return data
+            // Validar formato UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            if (!uuidRegex.test(militanteData.usuario_id)) {
+                throw new Error(`usuario_id no tiene formato UUID válido: ${militanteData.usuario_id}`)
+            }
+
+            // Verificar que el usuario existe
+            const { data: usuario, error: usuarioError } = await supabase
+                .from('usuarios')
+                .select('id, nombres, apellidos')
+                .eq('id', militanteData.usuario_id)
+                .single()
+
+            if (usuarioError || !usuario) {
+                console.error(`❌ Usuario no encontrado. ID: ${militanteData.usuario_id}, Error:`, usuarioError)
+                throw new Error('Usuario no encontrado')
+            }
+
+            // Verificar coordinador si se proporciona
+            if (militanteData.coordinador_id) {
+                if (!uuidRegex.test(militanteData.coordinador_id)) {
+                    throw new Error(`coordinador_id no tiene formato UUID válido: ${militanteData.coordinador_id}`)
+                }
+
+                const { data: coordinador, error: coordError } = await supabase
+                    .from('coordinadores')
+                    .select('id')
+                    .eq('id', militanteData.coordinador_id)
+                    .single()
+
+                if (coordError || !coordinador) {
+                    throw new Error('Coordinador no encontrado')
+                }
+            }
+
+            // Crear militante
+            const insertPayload: any = {
+                usuario_id: militanteData.usuario_id,
+                tipo: militanteData.tipo,
+                compromiso_marketing: militanteData.compromiso_marketing ?? null,
+                compromiso_cautivo: militanteData.compromiso_cautivo ?? null,
+                compromiso_impacto: militanteData.compromiso_impacto ?? null,
+                formulario: militanteData.formulario ?? null,
+            }
+            if (militanteData.coordinador_id) insertPayload.coordinador_id = militanteData.coordinador_id
+
+            const { data: militanteCreated, error: militanteError } = await supabase
+                .from('militantes')
+                .insert(insertPayload)
+                .select()
+                .single()
+
+            if (militanteError) {
+                console.error('Error creando militante:', militanteError)
+                throw new Error(militanteError.message)
+            }
+
+            // Sincronizar compromisos en usuarios
+            try {
+                if (militanteData.usuario_id) {
+                    const { error: userUpdateErr } = await supabase
+                        .from('usuarios')
+                        .update({
+                            compromiso_marketing: militanteData.compromiso_marketing ?? null,
+                            compromiso_cautivo: militanteData.compromiso_cautivo ?? null,
+                            compromiso_impacto: militanteData.compromiso_impacto ?? null,
+                            formulario: militanteData.formulario ?? null,
+                        })
+                        .eq('id', militanteData.usuario_id)
+
+                    if (userUpdateErr) {
+                        console.warn('Warning syncing user compromiso fields:', userUpdateErr)
+                    }
+                }
+            } catch (syncError) {
+                console.warn('No se pudo sincronizar compromisos en usuarios:', syncError)
+            }
+
+            return { militante: militanteCreated, usuario }
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
             setError(error)
