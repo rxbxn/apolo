@@ -14,12 +14,14 @@ interface CreateUserResult {
 
 export async function createAuthUser({ email, password, metadata }: CreateUserOptions): Promise<CreateUserResult> {
   try {
+    console.log('🔐 Iniciando creación de usuario Auth para:', email)
+    
     // Primero intentar con admin client
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     
     if (supabaseUrl && serviceRoleKey) {
-      console.log('🔑 Intentando crear usuario con admin client...')
+      console.log('🔑 Usando admin client para crear usuario...')
       
       const adminClient = createClient<Database>(
         supabaseUrl,
@@ -35,75 +37,51 @@ export async function createAuthUser({ email, password, metadata }: CreateUserOp
       const { data, error } = await adminClient.auth.admin.createUser({
         email,
         password,
-        email_confirm: true,
-        user_metadata: metadata
+        email_confirm: true, // Confirmar automáticamente
+        phone_confirm: true,  // Confirmar teléfono también
+        user_metadata: metadata || {}
       })
 
       if (!error && data.user) {
-        console.log('✅ Usuario creado con admin client')
+        console.log('✅ Usuario creado exitosamente con admin client:', data.user.id)
         return { user: data.user, error: null }
       }
       
-      console.warn('⚠️ Admin client falló, intentando método alternativo:', error?.message)
-    }
-
-    // Método alternativo: usar client regular + signup
-    console.log('🔄 Usando método alternativo con client regular...')
-    
-    const publicClient = createClient<Database>(
-      supabaseUrl!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    // Intentar signup con confirmación automática
-    const { data, error } = await publicClient.auth.signUp({
-      email,
-      password,
-      options: {
-        data: metadata,
-        emailRedirectTo: undefined // No redirigir
+      console.error('❌ Error con admin client:', {
+        message: error?.message,
+        status: error?.status,
+        name: error?.name
+      })
+      
+      // Si es un error de confirmación de email, intentar crear sin confirmación
+      if (error?.message?.includes('confirmation') || error?.message?.includes('email')) {
+        console.log('🔄 Reintentando sin confirmación de email...')
+        
+        const { data: retryData, error: retryError } = await adminClient.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: false, // No confirmar email
+          user_metadata: metadata || {}
+        })
+        
+        if (!retryError && retryData.user) {
+          console.log('✅ Usuario creado sin confirmación de email:', retryData.user.id)
+          return { user: retryData.user, error: null }
+        }
+        
+        console.warn('⚠️ También falló sin confirmación:', retryError?.message)
       }
-    })
-
-    if (error) {
-      console.error('❌ Error en signup alternativo:', error)
+      
       return { user: null, error }
     }
 
-    if (!data.user) {
-      return { user: null, error: new Error('No se pudo crear el usuario') }
-    }
-
-    // Si el usuario necesita confirmación, intentamos confirmar automáticamente
-    if (!data.user.email_confirmed_at && data.user.confirmation_token) {
-      console.log('🔄 Intentando confirmar email automáticamente...')
-      
-      try {
-        // Buscar en logs o usar API directa si es posible
-        const { error: confirmError } = await publicClient.auth.verifyOtp({
-          email,
-          token: data.user.confirmation_token || '',
-          type: 'signup'
-        })
-        
-        if (confirmError) {
-          console.warn('⚠️ No se pudo confirmar email automáticamente:', confirmError.message)
-        } else {
-          console.log('✅ Email confirmado automáticamente')
-        }
-      } catch (confirmError) {
-        console.warn('⚠️ Error confirmando email:', confirmError)
-      }
-    }
-
-    console.log('✅ Usuario creado con método alternativo')
-    return { user: data.user, error: null }
+    throw new Error('Credenciales de admin no disponibles')
 
   } catch (error) {
-    console.error('❌ Error general en createAuthUser:', error)
+    console.error('❌ Error creando usuario Auth:', error)
     return { 
       user: null, 
-      error: error instanceof Error ? error : new Error('Error desconocido') 
+      error: error instanceof Error ? error : new Error('Error desconocido creando usuario') 
     }
   }
 }

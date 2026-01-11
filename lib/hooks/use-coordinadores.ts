@@ -321,6 +321,16 @@ export function useCoordinadores() {
 
             // 2. Crear coordinador en base de datos (API 2)
             console.log('📋 API 2: Insertando coordinador en base de datos')
+            console.log('📋 Payload completo:', {
+                usuario_id: coordinadorData.usuario_id,
+                email: coordinadorData.email,
+                tipo: coordinadorData.tipo,
+                perfil_id: coordinadorData.perfil_id || null,
+                referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
+                auth_user_id: authUserId,
+                hasPassword: !!coordinadorData.password
+            })
+            
             const coordinadorPayload = {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
@@ -334,11 +344,15 @@ export function useCoordinadores() {
             const { data: coordinadorCreated, error: coordinadorError } = await supabase
                 .from('coordinadores')
                 .insert(coordinadorPayload)
-                .select()
-                .single()
+                .select('*')
 
             if (coordinadorError) {
-                console.error('❌ Error en inserción de coordinador:', coordinadorError)
+                console.error('❌ Error detallado en inserción de coordinador:')
+                console.error('- Código:', coordinadorError.code)
+                console.error('- Mensaje:', coordinadorError.message)
+                console.error('- Detalles:', coordinadorError.details)
+                console.error('- Hint:', coordinadorError.hint)
+                console.error('- Payload enviado:', coordinadorPayload)
                 
                 // Limpieza: eliminar usuario de Auth si se creó
                 if (authUserId) {
@@ -358,10 +372,16 @@ export function useCoordinadores() {
                 throw new Error(`Error en inserción de coordinador: ${coordinadorError.message}`)
             }
 
-            console.log('✅ Coordinador creado exitosamente:', coordinadorCreated)
+            if (!coordinadorCreated || coordinadorCreated.length === 0) {
+                console.error('❌ No se creó ningún coordinador (array vacío)')
+                throw new Error('No se insertó ningún registro en coordinadores')
+            }
+
+            const coordinador = coordinadorCreated[0] || coordinadorCreated
+            console.log('✅ Coordinador creado exitosamente:', coordinador)
             
             return {
-                ...coordinadorCreated,
+                ...coordinador,
                 auth_created: !!authUserId,
                 auth_user_id: authUserId
             }
