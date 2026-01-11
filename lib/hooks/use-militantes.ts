@@ -273,9 +273,19 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            const { error: deleteError } = await supabase.from('militantes').delete().eq('id', id)
+            // Usar API administrativo para eliminación
+            const response = await fetch('/api/militante/eliminar', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id })
+            })
 
-            if (deleteError) throw deleteError
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error eliminando militante')
+            }
 
             return true
         } catch (err) {

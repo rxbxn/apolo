@@ -20,7 +20,7 @@ export async function DELETE(request: NextRequest) {
 
         // Buscar el coordinador por email para obtener el auth_user_id
         console.log('🔍 Buscando coordinador con email:', email)
-        const { data: coordinador, error: findError } = await supabase
+        const { data: coordinador, error: findError } = await adminClient
             .from('coordinadores')
             .select('auth_user_id, id')
             .eq('email', email)
@@ -34,7 +34,7 @@ export async function DELETE(request: NextRequest) {
         console.log('✅ Coordinador encontrado:', coordinador)
 
         // Eliminar coordinador usando el ID obtenido
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await adminClient
             .from('coordinadores')
             .delete()
             .eq('id', coordinador.id)
