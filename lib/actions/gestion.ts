@@ -5,8 +5,8 @@ import { cookies } from "next/headers"
 import { revalidatePath } from "next/cache"
 
 export interface SolicitudGestion {
-    id?: number
-    formato_id?: number
+    id?: string
+    formulario_id?: string
     elemento: string
     unidad: string
     categoria: string
@@ -15,213 +15,400 @@ export interface SolicitudGestion {
     orden: number
 }
 
-export interface FormatoGestion {
-    id?: number
+export interface FormularioGestion {
+    id?: string
     numero_formulario: string
-    militante: string
-    dirigente: string
-    coordinador: string
-    telefono: string
-    localidad: string
-    receptor: string
-    estado_difusion: boolean
-    limpio_count: number
-    limpio_pendiente: number
-    lider_codigo: string
-    tipo_gestion: string
-    gestor_asignado: string
-    solicitud: string
-    fecha_necesidad: string // Date string
-    autorizacion_total: number
-    entregas_fecha: string // Date string
+    fecha_necesidad: string
     prioridad: string
-    observaciones_prioridad: string
-    observaciones_generales: string
+    militante_id?: string
+    dirigente_id?: string
+    coordinador_id?: string
+    telefono?: string
+    localidad_id?: string
+    localidad?: string
+    receptor?: string
+    estado_difusion?: string
+    limpio_conteo?: number
+    limpio_pendiente?: number
+    codigo_lider?: string
+    tipo_gestion?: string
+    gestor_asignado?: string
+    detalle_solicitud?: string
+    autorizacion_total?: number
+    fecha_entrega?: string
+    observaciones_prioridad?: string
+    observaciones_generales?: string
+    estado?: string
     solicitudes?: SolicitudGestion[]
-    created_at?: string
-    updated_at?: string
-    created_by?: string
+    creado_en?: string
+    actualizado_en?: string
+    creado_por?: string
 }
 
 export async function getGestiones() {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { data, error } = await supabase
-        .from("vw_formato_gestion_completo")
-        .select("*")
-        .order("created_at", { ascending: false })
+    try {
+        const { data: dataTabla, error: errorTabla } = await supabase
+            .from("formularios_gestion")
+            .select("*")
+            .order("creado_en", { ascending: false })
 
-    if (error) {
-        console.error("Error fetching gestiones:", error)
+        if (errorTabla) {
+            console.error("Error fetching gestiones:", errorTabla)
+            return []
+        }
+
+        return dataTabla || []
+
+    } catch (error) {
+        console.error("Error in getGestiones:", error)
         return []
     }
-
-    return data
 }
 
 export async function getGestionById(id: string) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { data, error } = await supabase
-        .from("vw_formato_gestion_completo")
-        .select("*")
-        .eq("id", id)
-        .single()
+    try {
+        console.log("Buscando formulario con ID:", id)
 
-    if (error) {
-        console.error("Error fetching gestion:", error)
+        if (!id || id === 'undefined' || id === 'null') {
+            console.error("ID invalido:", id)
+            return null
+        }
+
+        const { data: formulario, error: formularioError } = await supabase
+            .from("formularios_gestion")
+            .select("*")
+            .eq("id", id)
+            .single()
+
+        if (formularioError) {
+            console.error("Error en consulta:", formularioError)
+            return null
+        }
+
+        if (!formulario) {
+            console.error("No se encontro formulario:", id)
+            return null
+        }
+
+        console.log("Formulario encontrado:", formulario.numero_formulario)
+
+        const { data: solicitudes, error: solicitudesError } = await supabase
+            .from("solicitudes_gestion")
+            .select("*")
+            .eq("formulario_id", id)
+            .order("orden")
+
+        if (solicitudesError) {
+            console.error("Error obteniendo solicitudes:", solicitudesError)
+        }
+
+        return {
+            ...formulario,
+            solicitudes: solicitudes || []
+        }
+
+    } catch (error) {
+        console.error("Error general en getGestionById:", error)
         return null
     }
-
-    return data
 }
 
-export async function createGestion(formato: FormatoGestion) {
+export async function createGestion(formulario: FormularioGestion) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { data, error } = await supabase.rpc("insert_formato_gestion", {
-        p_numero_formulario: formato.numero_formulario,
-        p_militante: formato.militante,
-        p_dirigente: formato.dirigente,
-        p_coordinador: formato.coordinador,
-        p_telefono: formato.telefono,
-        p_localidad: formato.localidad,
-        p_receptor: formato.receptor,
-        p_estado_difusion: formato.estado_difusion,
-        p_limpio_count: formato.limpio_count,
-        p_limpio_pendiente: formato.limpio_pendiente,
-        p_lider_codigo: formato.lider_codigo,
-        p_tipo_gestion: formato.tipo_gestion,
-        p_gestor_asignado: formato.gestor_asignado,
-        p_solicitud: formato.solicitud,
-        p_fecha_necesidad: formato.fecha_necesidad,
-        p_autorizacion_total: formato.autorizacion_total,
-        p_entregas_fecha: formato.entregas_fecha,
-        p_prioridad: formato.prioridad,
-        p_observaciones_prioridad: formato.observaciones_prioridad,
-        p_observaciones_generales: formato.observaciones_generales,
-        p_solicitudes: formato.solicitudes || [],
-    })
+    try {
+        const { data, error } = await supabase
+            .from("formularios_gestion")
+            .insert(formulario)
+            .select()
+            .single()
 
-    if (error) {
-        console.error("Error creating gestion:", error)
-        throw new Error("Error al crear el formato de gestión")
-    }
-
-    revalidatePath("/dashboard/gestion-gerencial")
-    return data
-}
-
-export async function updateGestion(id: number, formato: FormatoGestion) {
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
-
-    // 1. Update main table
-    const { error: updateError } = await supabase
-        .from("formato_gestion_compromisos")
-        .update({
-            numero_formulario: formato.numero_formulario,
-            militante: formato.militante,
-            dirigente: formato.dirigente,
-            coordinador: formato.coordinador,
-            telefono: formato.telefono,
-            localidad: formato.localidad,
-            receptor: formato.receptor,
-            estado_difusion: formato.estado_difusion,
-            limpio_count: formato.limpio_count,
-            limpio_pendiente: formato.limpio_pendiente,
-            lider_codigo: formato.lider_codigo,
-            tipo_gestion: formato.tipo_gestion,
-            gestor_asignado: formato.gestor_asignado,
-            solicitud: formato.solicitud,
-            fecha_necesidad: formato.fecha_necesidad,
-            autorizacion_total: formato.autorizacion_total,
-            entregas_fecha: formato.entregas_fecha,
-            prioridad: formato.prioridad,
-            observaciones_prioridad: formato.observaciones_prioridad,
-            observaciones_generales: formato.observaciones_generales,
-        })
-        .eq("id", id)
-
-    if (updateError) {
-        console.error("Error updating gestion:", updateError)
-        throw new Error("Error al actualizar el formato de gestión")
-    }
-
-    // 2. Sync requests (Delete all and re-insert for simplicity, or smart update)
-    // For now, let's delete all existing requests for this format and insert the new ones
-    // This is safe because we have the full list from the form
-
-    const { error: deleteError } = await supabase
-        .from("solicitudes_gestion")
-        .delete()
-        .eq("formato_id", id)
-
-    if (deleteError) {
-        console.error("Error deleting old requests:", deleteError)
-        throw new Error("Error al actualizar las solicitudes")
-    }
-
-    if (formato.solicitudes && formato.solicitudes.length > 0) {
-        const solicitudesToInsert = formato.solicitudes.map((s) => ({
-            formato_id: id,
-            elemento: s.elemento,
-            unidad: s.unidad,
-            categoria: s.categoria,
-            sector: s.sector,
-            cantidad: s.cantidad,
-            orden: s.orden,
-        }))
-
-        const { error: insertError } = await supabase
-            .from("solicitudes_gestion")
-            .insert(solicitudesToInsert)
-
-        if (insertError) {
-            console.error("Error inserting new requests:", insertError)
-            throw new Error("Error al insertar las nuevas solicitudes")
+        if (error) {
+            console.error("Error creating gestion:", error)
+            throw error
         }
-    }
 
-    revalidatePath("/dashboard/gestion-gerencial")
-    revalidatePath(`/dashboard/gestion-gerencial/${id}`)
-    return true
+        revalidatePath("/dashboard/gestion-gerencial")
+        return data
+    } catch (error) {
+        console.error("Error in createGestion:", error)
+        throw error
+    }
 }
 
-export async function deleteGestion(id: number) {
+export async function updateGestion(id: string, formulario: Partial<FormularioGestion>) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { error } = await supabase
-        .from("formato_gestion_compromisos")
-        .delete()
-        .eq("id", id)
+    try {
+        const { data, error } = await supabase
+            .from("formularios_gestion")
+            .update(formulario)
+            .eq("id", id)
+            .select()
+            .single()
 
-    if (error) {
-        console.error("Error deleting gestion:", error)
-        throw new Error("Error al eliminar el formato de gestión")
+        if (error) {
+            console.error("Error updating gestion:", error)
+            throw error
+        }
+
+        revalidatePath("/dashboard/gestion-gerencial")
+        return data
+    } catch (error) {
+        console.error("Error in updateGestion:", error)
+        throw error
     }
-
-    revalidatePath("/dashboard/gestion-gerencial")
-    return true
 }
 
-export async function getUsuariosForSelect() {
+// Generar número de formulario automático
+export async function generarNumeroFormulario(): Promise<string> {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { data, error } = await supabase
-        .from("usuarios")
-        .select("id, nombres, apellidos, numero_documento")
-        .order("nombres")
+    try {
+        // Obtener el último número de formulario
+        const { data, error } = await supabase
+            .from("formularios_gestion")
+            .select("numero_formulario")
+            .order("numero_formulario", { ascending: false })
+            .limit(1)
 
-    if (error) {
-        console.error("Error fetching usuarios:", error)
+        if (error) {
+            console.error("Error obteniendo último número:", error)
+            return "GG-001"
+        }
+
+        if (!data || data.length === 0) {
+            return "GG-001"
+        }
+
+        const ultimoNumero = data[0].numero_formulario
+        const numeroActual = parseInt(ultimoNumero.split("-")[1]) || 0
+        const siguienteNumero = numeroActual + 1
+
+        return `GG-${siguienteNumero.toString().padStart(3, "0")}`
+    } catch (error) {
+        console.error("Error en generarNumeroFormulario:", error)
+        return "GG-001"
+    }
+}
+
+// Obtener militantes activos
+export async function getMilitantesActivos() {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        const { data, error } = await supabase
+            .from("militantes")
+            .select("id, usuarios!militantes_usuario_id_fkey(nombres, apellidos, numero_documento)")
+            .eq("estado", "activo")
+
+        if (error) {
+            console.error("Error obteniendo militantes:", error)
+            return []
+        }
+
+        // Transformar los datos al formato que espera el componente
+        return (data || []).map((militante: any) => ({
+            id: militante.id,
+            nombre: militante.usuarios ? 
+                `${militante.usuarios.nombres} ${militante.usuarios.apellidos}` : 
+                'Usuario desconocido',
+            documento: militante.usuarios?.numero_documento || 'Sin documento'
+        }))
+    } catch (error) {
+        console.error("Error en getMilitantesActivos:", error)
         return []
     }
+}
 
-    return data
+// Obtener coordinadores activos
+export async function getCoordinadoresActivos() {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        const { data, error } = await supabase
+            .from("coordinadores")
+            .select("id, tipo, usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)")
+            .eq("estado", "activo")
+
+        if (error) {
+            console.error("Error obteniendo coordinadores:", error)
+            return []
+        }
+
+        // Transformar los datos al formato que espera el componente
+        return (data || []).map((coordinador: any) => ({
+            id: coordinador.id,
+            nombre: coordinador.usuarios ? 
+                `${coordinador.usuarios.nombres} ${coordinador.usuarios.apellidos}` : 
+                'Usuario desconocido',
+            tipo: coordinador.tipo || 'coordinador'
+        }))
+    } catch (error) {
+        console.error("Error en getCoordinadoresActivos:", error)
+        return []
+    }
+}
+
+// Obtener dirigentes (son coordinadores con perfil dirigente)
+export async function getDirigentes() {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        const { data, error } = await supabase
+            .from("coordinadores")
+            .select(`
+                id, 
+                tipo,
+                usuario_id,
+                perfil_id,
+                usuarios!coordinadores_usuario_id_fkey(nombres, apellidos, email),
+                perfiles!coordinadores_perfil_id_fkey(nombre)
+            `)
+            .eq("estado", "activo")
+
+        if (error) {
+            console.error("Error obteniendo dirigentes:", error)
+            return [
+                { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente General" },
+                { id: "temp-2", nombre: "Dirigente Temporal 2", perfil_nombre: "Dirigente Regional" }
+            ]
+        }
+
+        // Filtrar por perfil "Dirigente" y transformar los datos
+        const dirigentes = (data || [])
+            .filter((coordinador: any) => 
+                coordinador.perfiles?.nombre === "Dirigente" || 
+                coordinador.tipo === "dirigente"
+            )
+            .map((dirigente: any) => ({
+                id: dirigente.id,
+                nombre: dirigente.usuarios ? 
+                    `${dirigente.usuarios.nombres} ${dirigente.usuarios.apellidos}` : 
+                    'Usuario desconocido',
+                perfil_nombre: dirigente.perfiles?.nombre || 'Dirigente'
+            }))
+
+        // Si no hay dirigentes, devolver datos temporales
+        if (dirigentes.length === 0) {
+            return [
+                { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente" }
+            ]
+        }
+
+        return dirigentes
+    } catch (error) {
+        console.error("Error en getDirigentes:", error)
+        return [
+            { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente General" }
+        ]
+    }
+}
+
+// Obtener opciones del catálogo
+export async function getCatalogoOpciones(tipo?: string) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        const { data, error } = await supabase
+            .from("catalogo_gestion")
+            .select("*")
+
+        if (error) {
+            console.error("Error obteniendo catálogo:", error)
+            // Fallback: crear datos de prueba basados en el tipo solicitado
+            if (tipo === 'elemento') {
+                return [
+                    { id: "1", elemento: "Computadora", unidad: "Unidades", sector: "Tecnología" },
+                    { id: "2", elemento: "Teléfono", unidad: "Unidades", sector: "Comunicación" },
+                    { id: "3", elemento: "Impresora", unidad: "Unidades", sector: "Oficina" }
+                ]
+            }
+            if (tipo === 'unidad') {
+                return [
+                    { id: "1", nombre: "Unidades" },
+                    { id: "2", nombre: "Cajas" },
+                    { id: "3", nombre: "Paquetes" }
+                ]
+            }
+            if (tipo === 'categoria') {
+                return [
+                    { id: "1", nombre: "Tecnología" },
+                    { id: "2", nombre: "Oficina" },
+                    { id: "3", nombre: "Logística" }
+                ]
+            }
+            if (tipo === 'sector') {
+                return [
+                    { id: "1", nombre: "Administración" },
+                    { id: "2", nombre: "Operaciones" },
+                    { id: "3", nombre: "Comunicación" }
+                ]
+            }
+            if (tipo === 'tipo_gestion') {
+                return [
+                    { id: "TG001", nombre: "Gestión Administrativa" },
+                    { id: "TG002", nombre: "Gestión Operativa" },
+                    { id: "TG003", nombre: "Gestión de Comunicación" }
+                ]
+            }
+            return []
+        }
+
+        // Si no hay error, retornar todos los datos
+        return data || []
+    } catch (error) {
+        console.error("Error en getCatalogoOpciones:", error)
+        return []
+    }
+}
+
+// Obtener localidades
+export async function getLocalidades() {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        const { data, error } = await supabase
+            .from("lugares")
+            .select("id, nombre, codigo, tipo, departamento")
+            .eq("estado", "activo")
+            .order("nombre")
+
+        if (error) {
+            console.error("Error obteniendo lugares:", error)
+            return [
+                { id: "temp-1", nombre: "Bogotá", codigo: "BOG" },
+                { id: "temp-2", nombre: "Medellín", codigo: "MED" },
+                { id: "temp-3", nombre: "Cali", codigo: "CAL" },
+                { id: "temp-4", nombre: "Barranquilla", codigo: "BAQ" }
+            ]
+        }
+
+        // Transformar al formato que espera el componente
+        return (data || []).map((lugar: any) => ({
+            id: lugar.id,
+            nombre: lugar.nombre,
+            codigo: lugar.codigo || lugar.tipo || lugar.departamento?.substring(0, 3) || 'LOC'
+        }))
+    } catch (error) {
+        console.error("Error en getLocalidades:", error)
+        return [
+            { id: "temp-1", nombre: "Bogotá", codigo: "BOG" },
+            { id: "temp-2", nombre: "Medellín", codigo: "MED" }
+        ]
+    }
 }

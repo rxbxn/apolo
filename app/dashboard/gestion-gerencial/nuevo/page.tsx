@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { GestionForm } from "@/components/management/gestion-form"
+import { GestionFormNew } from "@/components/management/gestion-form-new"
 
 export const metadata = {
     title: "Nuevo Formato de Gestión - APOLO",
@@ -16,7 +16,7 @@ export default function NuevoGestionPage() {
                         Diligencia la información para crear un nuevo formato de gestión.
                     </p>
                 </div>
-                <GestionForm />
+                <GestionFormNew />
             </div>
         </DashboardLayout>
     )
