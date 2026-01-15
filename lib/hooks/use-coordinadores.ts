@@ -146,7 +146,7 @@ export function useCoordinadores() {
                     .select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email, ciudad_id, zona_id')
                     .eq('id', coordData.usuario_id)
                     .single()
-                
+
                 if (uData) usuarioInfo = uData
             }
 
@@ -158,7 +158,7 @@ export function useCoordinadores() {
                     .select('nombre')
                     .eq('id', coordData.perfil_id)
                     .single()
-                
+
                 if (pData) perfilNombre = pData.nombre
             }
 
@@ -171,7 +171,7 @@ export function useCoordinadores() {
                     .select('nombre')
                     .eq('id', usuarioInfo.ciudad_id)
                     .single()
-                
+
                 if (cData) ciudadNombre = cData.nombre
             }
             if (usuarioInfo?.zona_id) {
@@ -180,7 +180,7 @@ export function useCoordinadores() {
                     .select('nombre')
                     .eq('id', usuarioInfo.zona_id)
                     .single()
-                
+
                 if (zData) zonaNombre = zData.nombre
             }
 
@@ -299,13 +299,13 @@ export function useCoordinadores() {
             let authUserId = null
             if (coordinadorData.password) {
                 console.log('🔐 API 1: Creando usuario de autenticación para:', coordinadorData.email)
-                
+
                 const authResponse = await fetch('/api/auth/create-user-admin', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        email: coordinadorData.email, 
-                        password: coordinadorData.password 
+                    body: JSON.stringify({
+                        email: coordinadorData.email,
+                        password: coordinadorData.password
                     })
                 })
 
@@ -329,7 +329,7 @@ export function useCoordinadores() {
                 tipo: coordinadorData.tipo,
                 tiene_auth: !!authUserId
             })
-            
+
             const coordinadorPayload = {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
@@ -351,7 +351,7 @@ export function useCoordinadores() {
                 console.error('- Mensaje:', coordinadorError.message)
                 console.error('- Detalles:', coordinadorError.details)
                 console.error('- Payload enviado:', coordinadorPayload)
-                
+
                 // Cleanup: eliminar usuario de Auth si se creó
                 if (authUserId) {
                     console.log('🧹 Ejecutando limpieza de usuario de autenticación...')
@@ -366,7 +366,7 @@ export function useCoordinadores() {
                         console.warn('⚠️ Error en limpieza de usuario de autenticación:', cleanupError)
                     }
                 }
-                
+
                 throw new Error(`Error en inserción de coordinador: ${coordinadorError.message}`)
             }
 
@@ -384,7 +384,7 @@ export function useCoordinadores() {
             } else {
                 console.log('💡 Coordinador creado SIN usuario de autenticación (se puede agregar después)')
             }
-            
+
             return {
                 ...coordinador,
                 auth_created: !!authUserId,
@@ -475,7 +475,7 @@ export function useCoordinadores() {
             if (coordinador.auth_user_id) {
                 try {
                     console.log('🔥 Intentando eliminar usuario de Auth:', coordinador.auth_user_id)
-                    
+
                     // Usar API de Next.js solo para la eliminación de Auth
                     const response = await fetch('/api/auth/delete-user', {
                         method: 'DELETE',
@@ -554,6 +554,35 @@ export function useCoordinadores() {
         }
     }, [])
 
+    const buscarPorPerfil = useCallback(async (perfilNombre: string, termino?: string) => {
+        try {
+            setLoading(true)
+            setError(null)
+
+            // Filtrar directamente por el campo 'rol' en la vista (ej: "Coordinador%")
+            let query = supabase
+                .from('v_coordinadores_completo')
+                .select('coordinador_id, nombres, apellidos, email, perfil_id, rol, numero_documento')
+                .ilike('rol', `${perfilNombre}%`)
+                .limit(50)
+
+            if (termino && termino.length > 0) {
+                query = query.or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,email.ilike.%${termino}%`)
+            }
+
+            const { data, error: queryError } = await query
+
+            if (queryError) throw queryError
+
+            return data || []
+        } catch (err) {
+            console.error('Error buscando por perfil:', err)
+            return []
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
     const buscarDirigentes = useCallback(async () => {
         try {
             setLoading(true)
@@ -591,6 +620,57 @@ export function useCoordinadores() {
         }
     }, [])
 
+    const listarRelacionesDirigentes = useCallback(async () => {
+        try {
+            setLoading(true)
+            setError(null)
+
+            // 1. Fetch relationships from 'dirigentes' table
+            const { data: relaciones, error: relError } = await (supabase as any)
+                .from('dirigentes')
+                .select('*')
+
+            if (relError) throw relError
+            if (!relaciones || relaciones.length === 0) return []
+
+            // 2. Collect all unique IDs
+            const ids = new Set<string>()
+            relaciones.forEach((r: any) => {
+                if (r.id_dirigente) ids.add(r.id_dirigente)
+                if (r.id_coordinador) ids.add(r.id_coordinador)
+            })
+
+            if (ids.size === 0) return []
+
+            // 3. Fetch details for all involved coordinators
+            const { data: detalles, error: detError } = await supabase
+                .from('v_coordinadores_completo')
+                .select('coordinador_id, nombres, apellidos, perfil_nombre, numero_documento')
+                .in('coordinador_id', Array.from(ids))
+
+            if (detError) throw detError
+
+            // 4. Map details back to relationships
+            const detallesMap = new Map(detalles?.map((d: any) => [d.coordinador_id, d]) || [])
+
+            const resultado = relaciones.map((r: any) => ({
+                id: r.id,
+                dirigente: detallesMap.get(r.id_dirigente) || { nombres: 'Desconocido', apellidos: '' },
+                coordinador: detallesMap.get(r.id_coordinador) || { nombres: 'Desconocido', apellidos: '' },
+                creado_en: r.creado_en
+            }))
+
+            return resultado
+        } catch (err) {
+            console.error('Error listando relaciones de dirigentes:', err)
+            const error = err instanceof Error ? err : new Error('Error desconocido')
+            setError(error)
+            return []
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
     return {
         listar,
         obtenerPorId,
@@ -600,6 +680,8 @@ export function useCoordinadores() {
         cambiarEstado,
         buscarCoordinadores,
         buscarDirigentes,
+        listarRelacionesDirigentes,
+        buscarPorPerfil,
         loading,
         error,
     }

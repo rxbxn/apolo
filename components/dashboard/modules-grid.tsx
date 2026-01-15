@@ -30,6 +30,14 @@ const MODULES = [
     accentColor: "text-teal-600 dark:text-teal-400",
   },
   {
+    title: "Módulo Dirigente",
+    description: "Gestiona dirigentes políticos (coordinadores con perfil dirigente)",
+    href: "/dashboard/dirigente",
+    icon: UserCheck,
+    color: "bg-yellow-100 dark:bg-yellow-900",
+    accentColor: "text-yellow-600 dark:text-yellow-400",
+  },
+  {
     title: "Módulo Militante",
     description: "Gestiona militantes políticos del sistema",
     href: "/dashboard/militante",

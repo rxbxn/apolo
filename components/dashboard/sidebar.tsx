@@ -9,6 +9,7 @@ const MENU_ITEMS = [
   { label: "Módulo Personas", href: "/dashboard/personas", icon: Users },
   { label: "Módulo Coordinador", href: "/dashboard/coordinador", icon: UserCheck },
   { label: "Módulo Militante", href: "/dashboard/militante", icon: UserPlus },
+  { label: "Módulo Dirigente", href: "/dashboard/dirigente", icon: UserCheck },
   { label: "Gestión Gerencial", href: "/dashboard/gestion-gerencial", icon: BarChart3 },
   { label: "Alistamiento Debate", href: "/dashboard/debate", icon: FileText },
   { label: "Asignar Datos", href: "/dashboard/assign-data", icon: Building2 },
