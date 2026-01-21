@@ -34,6 +34,8 @@ export function PersonaTable() {
     const [showAllFields, setShowAllFields] = useState(false)
     const [dynamicFields, setDynamicFields] = useState<string[]>([])
     const [uploadSummary, setUploadSummary] = useState<{ filename?: string, total?: number, errors?: any[] } | null>(null)
+    const [page, setPage] = useState(1)
+    const [perPage, setPerPage] = useState(25)
 
     const fetchPersonas = async () => {
         setLoading(true)
@@ -69,6 +71,12 @@ export function PersonaTable() {
         p.celular?.includes(searchTerm)
     )
 
+    const totalPages = Math.max(1, Math.ceil(filteredPersonas.length / perPage))
+    // Ensure current page is in range
+    if (page > totalPages) setPage(totalPages)
+
+    const paginatedPersonas = filteredPersonas.slice((page - 1) * perPage, page * perPage)
+
     const toggleSelect = (id: number) => {
         setSelectedIds(prev =>
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -76,10 +84,14 @@ export function PersonaTable() {
     }
 
     const toggleSelectAll = () => {
-        if (selectedIds.length === filteredPersonas.length) {
-            setSelectedIds([])
+        const pageIds = paginatedPersonas.map(p => p.id!).filter(Boolean)
+        const allSelectedOnPage = pageIds.every(id => selectedIds.includes(id)) && pageIds.length > 0
+        if (allSelectedOnPage) {
+            // remove page ids from selection
+            setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)))
         } else {
-            setSelectedIds(filteredPersonas.map(p => p.id!).filter(Boolean))
+            // add page ids to selection (avoid duplicates)
+            setSelectedIds(prev => Array.from(new Set([...prev, ...pageIds])))
         }
     }
 
@@ -167,7 +179,7 @@ export function PersonaTable() {
                             <TableRow>
                                 <TableHead className="w-[50px]">
                                     <Checkbox
-                                        checked={selectedIds.length > 0 && selectedIds.length === filteredPersonas.length}
+                                        checked={paginatedPersonas.length > 0 && paginatedPersonas.every(p => selectedIds.includes(p.id!))}
                                         onCheckedChange={toggleSelectAll}
                                     />
                                 </TableHead>
@@ -184,19 +196,19 @@ export function PersonaTable() {
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">
+                                    <TableCell colSpan={6 + (showAllFields ? dynamicFields.length : 0)} className="h-24 text-center">
                                         <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                                         Cargando datos...
                                     </TableCell>
                                 </TableRow>
                             ) : filteredPersonas.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={6 + (showAllFields ? dynamicFields.length : 0)} className="h-24 text-center text-muted-foreground">
                                         No se encontraron registros.
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredPersonas.map((persona) => (
+                                paginatedPersonas.map((persona) => (
                                     <TableRow key={persona.id} className="hover:bg-muted/30 transition-colors">
                                         <TableCell>
                                             <Checkbox
@@ -230,6 +242,28 @@ export function PersonaTable() {
                             )}
                         </TableBody>
                     </Table>
+                </div>
+
+                {/* Pagination controls */}
+                <div className="mt-3 flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">
+                        Mostrando {(filteredPersonas.length === 0) ? 0 : (page - 1) * perPage + 1} - {Math.min(page * perPage, filteredPersonas.length)} de {filteredPersonas.length}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" onClick={() => setPage(prev => Math.max(1, prev - 1))} disabled={page === 1}>Anterior</Button>
+                            <Button size="sm" variant="outline" onClick={() => setPage(prev => Math.min(totalPages, prev + 1))} disabled={page === totalPages}>Siguiente</Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm">Filas por página:</label>
+                            <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="border rounded px-2 py-1 text-sm">
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 {uploadSummary && (
