@@ -14,14 +14,22 @@ export function ExcelUpload() {
     const [uploadProgress, setUploadProgress] = useState<string | null>(null)
     const [progressValue, setProgressValue] = useState(0)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const [uploadErrors, setUploadErrors] = useState<Array<{ row: number, error: string, data?: any }>>([])
+    const [filename, setFilename] = useState<string | null>(null)
+    const [previewData, setPreviewData] = useState<any[] | null>(null)
+    const [validationResults, setValidationResults] = useState<Array<{ row: number, errors: string[] }>>([])
+    const [isConfirmed, setIsConfirmed] = useState(false)
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
+        const fileName = file.name
+        setFilename(fileName)
         setIsUploading(true)
         setProgressValue(0)
         setUploadProgress("Leyendo archivo...")
+        setUploadErrors([])
 
         try {
             const reader = new FileReader()
@@ -134,11 +142,34 @@ export function ExcelUpload() {
                     })
 
                     setProgressValue(30)
-                    setUploadProgress("Sincronizando catálogos e insertando datos...")
+                    setUploadProgress("Validando datos...")
+
+                    // Validaciones simples antes de la inserción
+                    const validations: Array<{ row: number, errors: string[] }> = []
+                    mappedData.forEach((r, idx) => {
+                        const errs: string[] = []
+                        // Requeridos básicos
+                        if (!r.cedula || String(r.cedula).trim() === '') errs.push('cedula requerida')
+                        if (!r.persona || String(r.persona).trim() === '') errs.push('persona (nombre) requerida')
+                        // celular puede ser numérico (opcional)
+                        if (r.celular && !/^[0-9+\-\s()]+$/.test(String(r.celular))) errs.push('celular con caracteres inválidos')
+                        if (errs.length > 0) validations.push({ row: idx + 1, errors: errs })
+                    })
+
+                    setValidationResults(validations)
+
+                    // Si no está confirmado, mostrar preview y esperar confirmación
+                    setPreviewData(mappedData)
+                    setUploadProgress(`Previsualización lista: ${mappedData.length} registros. Revise y confirme.`)
+                    setIsUploading(false)
+                    setIsConfirmed(false)
+                    setProgressValue(0)
+                    return
 
                     // Procesar en lotes para mostrar progreso
                     const batchSize = 100
                     const totalBatches = Math.ceil(mappedData.length / batchSize)
+                    const errorsLocal: Array<{ row: number, error: string, data?: any }> = []
 
                     for (let i = 0; i < totalBatches; i++) {
                         const start = i * batchSize
@@ -146,14 +177,43 @@ export function ExcelUpload() {
                         const batch = mappedData.slice(start, end)
 
                         setUploadProgress(`Insertando lote ${i + 1} de ${totalBatches}...`)
-                        await importPersonas(batch)
+                        try {
+                            // Intento insertar el lote completo
+                            await importPersonas(batch)
+                        } catch (batchErr: any) {
+                            console.error(`Error inserting batch ${i + 1}:`, batchErr)
+                            // Intentar insertar fila a fila para capturar qué filas fallan
+                            for (let j = 0; j < batch.length; j++) {
+                                const row = batch[j]
+                                const globalIndex = start + j + 1 // 1-based
+                                try {
+                                    await importPersonas([row])
+                                } catch (rowErr: any) {
+                                    console.error(`Row ${globalIndex} failed:`, rowErr)
+                                    errorsLocal.push({ row: globalIndex, error: rowErr?.message || String(rowErr), data: row })
+                                }
+                            }
+                        }
 
                         const progress = 30 + Math.round(((i + 1) / totalBatches) * 70)
                         setProgressValue(progress)
                     }
 
                     toast.success(`Se han importado ${mappedData.length} registros correctamente`)
-                    if (fileInputRef.current) fileInputRef.current.value = ""
+                    // Actualizar estado local de errores y emitir evento con resumen de la importación
+                    setUploadErrors(errorsLocal)
+                    const eventDetail = {
+                        filename: fileName,
+                        total: mappedData.length,
+                        errors: errorsLocal
+                    }
+                    try {
+                        window.dispatchEvent(new CustomEvent('persona:upload:complete', { detail: eventDetail }))
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    fileInputRef.current!.value = ""
                     router.refresh()
                 } catch (err) {
                     console.error("Error al procesar el Excel:", err)
@@ -172,6 +232,91 @@ export function ExcelUpload() {
             setUploadProgress(null)
             setProgressValue(0)
         }
+    }
+
+    // Función para iniciar la importación luego de confirmar (usa previewData)
+    const startImport = async () => {
+    if (!previewData) return
+        setIsUploading(true)
+        setProgressValue(5)
+        setUploadProgress('Iniciando importación...')
+
+        const mappedData = previewData
+        const batchSize = 100
+        const totalBatches = Math.ceil(mappedData.length / batchSize)
+        const errorsLocal: Array<{ row: number, error: string, data?: any }> = []
+
+        for (let i = 0; i < totalBatches; i++) {
+            const start = i * batchSize
+            const end = Math.min(start + batchSize, mappedData.length)
+            const batch = mappedData.slice(start, end)
+
+            setUploadProgress(`Insertando lote ${i + 1} de ${totalBatches}...`)
+            try {
+                await importPersonas(batch)
+            } catch (batchErr: any) {
+                console.error(`Error inserting batch ${i + 1}:`, batchErr)
+                for (let j = 0; j < batch.length; j++) {
+                    const row = batch[j]
+                    const globalIndex = start + j + 1
+                    try {
+                        await importPersonas([row])
+                    } catch (rowErr: any) {
+                        console.error(`Row ${globalIndex} failed:`, rowErr)
+                        errorsLocal.push({ row: globalIndex, error: rowErr?.message || String(rowErr), data: row })
+                    }
+                }
+            }
+
+            const progress = 10 + Math.round(((i + 1) / totalBatches) * 80)
+            setProgressValue(progress)
+        }
+
+        setUploadErrors(errorsLocal)
+    const eventDetail = { filename, total: mappedData.length, errors: errorsLocal }
+        try { window.dispatchEvent(new CustomEvent('persona:upload:complete', { detail: eventDetail })) } catch(e){}
+        setPreviewData(null)
+        setValidationResults([])
+        setIsConfirmed(false)
+        setIsUploading(false)
+        setUploadProgress(null)
+        setProgressValue(0)
+        router.refresh()
+        if (errorsLocal.length > 0) {
+            toast.error(`Import completed with ${errorsLocal.length} errors`)
+        } else {
+            toast.success(`Se han importado ${mappedData.length} registros correctamente`)
+        }
+    }
+
+    const cancelPreview = () => {
+        setPreviewData(null)
+        setValidationResults([])
+        setUploadErrors([])
+        setIsConfirmed(false)
+        setUploadProgress(null)
+        setProgressValue(0)
+        fileInputRef.current!.value = ''
+    }
+
+    const exportErrorsToCSV = (errors: Array<{ row: number, error: string, data?: any }>) => {
+        if (!errors || errors.length === 0) return
+        const headers = ['row','error','data']
+        const lines = [headers.join(',')]
+        for (const e of errors) {
+            const dataJson = e.data ? JSON.stringify(e.data).replace(/\n/g,' ').replace(/\r/g,'') : ''
+            lines.push(`${e.row},"${(e.error || '').replace(/"/g,'""')}","${dataJson.replace(/"/g,'""')}"`)
+        }
+        const csv = lines.join('\n')
+        const blob = new Blob([csv], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${filename || 'errors'}.csv`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
     }
 
     return (
@@ -211,6 +356,47 @@ export function ExcelUpload() {
                             {uploadProgress} ({progressValue}%)
                         </p>
                     )}
+                </div>
+            )}
+
+            {previewData && (
+                <div className="mt-3 p-3 border rounded bg-muted/30">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium">Previsualización lista: {previewData.length} registros</p>
+                            {validationResults.length > 0 ? (
+                                <p className="text-xs text-yellow-700">Validaciones: {validationResults.length} filas con advertencias</p>
+                            ) : (
+                                <p className="text-xs text-green-700">Sin validaciones detectadas</p>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Button onClick={startImport} disabled={isUploading} className="bg-blue-600 hover:bg-blue-700 text-white">Confirmar importación</Button>
+                            <Button onClick={cancelPreview} disabled={isUploading} className="bg-gray-200 hover:bg-gray-300">Cancelar</Button>
+                            <Button onClick={() => exportErrorsToCSV(uploadErrors)} disabled={!uploadErrors || uploadErrors.length===0} className="bg-amber-100 hover:bg-amber-200">Exportar errores</Button>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 overflow-x-auto">
+                        <table className="min-w-full text-sm border-collapse">
+                            <thead>
+                                <tr>
+                                    {Object.keys(previewData[0] || {}).slice(0, 20).map((k) => (
+                                        <th key={k} className="px-2 py-1 text-left font-medium">{k}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {previewData.slice(0, 5).map((row, idx) => (
+                                    <tr key={idx} className="odd:bg-white even:bg-slate-50">
+                                        {Object.keys(previewData[0] || {}).slice(0, 20).map((k) => (
+                                            <td key={k} className="px-2 py-1 align-top">{String(row[k] ?? '')}</td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
         </div>

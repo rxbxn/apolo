@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    console.log('API /api/dirigente received:', body)
+    console.log('[api/dirigente] POST received body:', body)
     const { dirigente_id, coordinador_id } = body || {}
 
     if (!dirigente_id || !coordinador_id) {
@@ -12,7 +12,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Insertar en la tabla public.dirigentes, pero primero verificar duplicados
-    const supabase = createAdminClient()
+    let supabase
+    try {
+      supabase = createAdminClient()
+    } catch (err: any) {
+      console.error('[api/dirigente] createAdminClient error:', err?.message || err)
+      return NextResponse.json({ error: 'Server misconfiguration: missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL' }, { status: 500 })
+    }
 
     // Verificar si ya existe la relación dirigente-coordinador
     const { data: exists, error: existsError } = await (supabase as any)
@@ -37,13 +43,15 @@ export async function POST(request: NextRequest) {
       .select()
 
     if (error) {
-      console.error('Error insertando dirigente:', error)
-      return NextResponse.json({ error: error.message || 'Error insertando dirigente' }, { status: 500 })
+      console.error('[api/dirigente] Error insertando dirigente:', error)
+      return NextResponse.json({ error: error.message || 'Error insertando dirigente', details: error }, { status: 500 })
     }
 
+    console.log('[api/dirigente] Insert result:', data)
     return NextResponse.json({ success: true, data }, { status: 201 })
   } catch (error) {
-    console.error('Error en API dirigente:', error)
-    return NextResponse.json({ error: 'Error' }, { status: 500 })
+    console.error('[api/dirigente] Error en API dirigente:', error)
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

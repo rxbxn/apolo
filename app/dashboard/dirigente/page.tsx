@@ -7,7 +7,6 @@ export const metadata = {
   description: "Listado y gestión de dirigentes (coordinadores con perfil dirigente)",
 }
 
-// Force rebuild
 export default function DirigentePage() {
   return (
     <DashboardLayout>

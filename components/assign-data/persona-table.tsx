@@ -31,6 +31,9 @@ export function PersonaTable() {
     const [searchTerm, setSearchTerm] = useState("")
     const [selectedIds, setSelectedIds] = useState<number[]>([])
     const [isTransferring, setIsTransferring] = useState(false)
+    const [showAllFields, setShowAllFields] = useState(false)
+    const [dynamicFields, setDynamicFields] = useState<string[]>([])
+    const [uploadSummary, setUploadSummary] = useState<{ filename?: string, total?: number, errors?: any[] } | null>(null)
 
     const fetchPersonas = async () => {
         setLoading(true)
@@ -46,6 +49,18 @@ export function PersonaTable() {
 
     useEffect(() => {
         fetchPersonas()
+    }, [])
+
+    useEffect(() => {
+        const handler = (e: any) => {
+            const detail = e.detail || {}
+            setUploadSummary(detail)
+            // Refrescar lista
+            fetchPersonas()
+        }
+
+        window.addEventListener('persona:upload:complete', handler)
+        return () => window.removeEventListener('persona:upload:complete', handler)
     }, [])
 
     const filteredPersonas = personas.filter(p =>
@@ -92,6 +107,22 @@ export function PersonaTable() {
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <CardTitle className="text-xl font-bold">Registros de Personas</CardTitle>
                 <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            // calcular campos dinámicos
+                            if (personas.length > 0) {
+                                const keys = Array.from(new Set(personas.flatMap(p => Object.keys(p))))
+                                setDynamicFields(keys)
+                                setShowAllFields(prev => !prev)
+                            } else {
+                                toast.info('No hay registros para mostrar todos los campos')
+                            }
+                        }}
+                    >
+                        {showAllFields ? 'Ocultar campos' : 'Mostrar todos los campos'}
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -145,6 +176,9 @@ export function PersonaTable() {
                                 <TableHead>Celular</TableHead>
                                 <TableHead>Ciudad/Barrio</TableHead>
                                 <TableHead>Estado</TableHead>
+                                {showAllFields && dynamicFields.map((f) => (
+                                    <TableHead key={f}>{f}</TableHead>
+                                ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -186,12 +220,49 @@ export function PersonaTable() {
                                                 {persona.estado || 'activo'}
                                             </Badge>
                                         </TableCell>
+                                        {showAllFields && dynamicFields.map((f) => (
+                                            <TableCell key={f} className="text-xs">
+                                                {((persona as any)[f] !== undefined && (persona as any)[f] !== null) ? String((persona as any)[f]) : '-'}
+                                            </TableCell>
+                                        ))}
                                     </TableRow>
                                 ))
                             )}
                         </TableBody>
                     </Table>
                 </div>
+
+                {uploadSummary && (
+                    <div className="mt-4 p-3 border rounded bg-muted/10">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <strong>Archivo:</strong> {uploadSummary.filename || 'N/A'}
+                                <br />
+                                <strong>Total importados:</strong> {uploadSummary.total ?? 'N/A'}
+                            </div>
+                            <div>
+                                {uploadSummary.errors && uploadSummary.errors.length > 0 ? (
+                                    <Badge variant="destructive">Errores: {uploadSummary.errors.length}</Badge>
+                                ) : (
+                                    <Badge variant="default">Sin errores</Badge>
+                                )}
+                            </div>
+                        </div>
+
+                        {uploadSummary.errors && uploadSummary.errors.length > 0 && (
+                            <div className="mt-3 text-xs">
+                                <details>
+                                    <summary className="cursor-pointer">Ver errores</summary>
+                                    <ul className="mt-2 list-disc ml-5">
+                                        {uploadSummary.errors.map((err: any, idx: number) => (
+                                            <li key={idx}><strong>Fila {err.row}:</strong> {err.error}</li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            </div>
+                        )}
+                    </div>
+                )}
             </CardContent>
         </Card>
     )
