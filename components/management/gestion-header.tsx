@@ -1,6 +1,6 @@
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, Settings } from "lucide-react"
 import Link from "next/link"
 
 export function GestionHeader() {
@@ -13,12 +13,20 @@ export function GestionHeader() {
                         Gestiona formatos de gestión y compromisos del sistema.
                     </p>
                 </div>
-                <Link href="/dashboard/gestion-gerencial/nuevo">
-                    <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Nuevo Formato
-                    </Button>
-                </Link>
+                <div className="flex items-center gap-2">
+                    <Link href="/dashboard/gestion-gerencial/nuevo">
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Nuevo Formato
+                        </Button>
+                    </Link>
+                    <Link href="/dashboard/configuracion?tab=elementos">
+                        <Button variant="ghost">
+                            <Settings className="mr-2 h-4 w-4" />
+                            Configurar Elementos
+                        </Button>
+                    </Link>
+                </div>
             </div>
         </DashboardHeader>
     )

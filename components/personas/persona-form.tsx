@@ -67,6 +67,9 @@ const personaSchema = z.object({
   linkedin: z.string().optional(),
   tiktok: z.string().optional(),
 
+  // Foto de perfil (URL)
+  foto_perfil_url: z.string().optional(),
+
   // Referencias
   referencia_id: z.string().optional(),
   tipo_referencia_id: z.string().optional(),
@@ -151,6 +154,9 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
       twitter: "",
       linkedin: "",
       tiktok: "",
+
+  // Foto de perfil
+  foto_perfil_url: initialData?.foto_perfil_url || "",
       
       // Referencias
       referencia_id: "",

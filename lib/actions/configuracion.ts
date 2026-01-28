@@ -402,3 +402,66 @@ export async function deleteCompromiso(id: string | number) {
     if (error) throw await enrichTableError('compromiso', error)
     revalidatePath('/dashboard/configuracion')
 }
+
+// --- Catalogo Gestión (Elementos, unidades, categorias, sectores) ---
+export type CatalogoElemento = {
+    id: string
+    elemento: string | null
+    unidad: string | null
+    categoria: string | null
+    sector: string | null
+}
+
+export async function getCatalogoGestion(tipo?: string) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        let query = supabase.from('catalogo_gestion').select('*').order('elemento')
+        const { data, error } = await query
+        if (error) throw await enrichTableError('catalogo_gestion', error)
+        return data || []
+    } catch (error) {
+        throw await enrichTableError('catalogo_gestion', error)
+    }
+}
+
+export async function createCatalogoElemento(formData: FormData) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    const data = {
+        elemento: formData.get('elemento') || null,
+        unidad: formData.get('unidad') || null,
+        categoria: formData.get('categoria') || null,
+        sector: formData.get('sector') || null,
+    }
+
+    const { error } = await supabase.from('catalogo_gestion').insert([data])
+    if (error) throw await enrichTableError('catalogo_gestion', error)
+    revalidatePath('/dashboard/configuracion')
+}
+
+export async function updateCatalogoElemento(id: string, formData: FormData) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    const data = {
+        elemento: formData.get('elemento') || null,
+        unidad: formData.get('unidad') || null,
+        categoria: formData.get('categoria') || null,
+        sector: formData.get('sector') || null,
+    }
+
+    const { error } = await supabase.from('catalogo_gestion').update(data).eq('id', id)
+    if (error) throw await enrichTableError('catalogo_gestion', error)
+    revalidatePath('/dashboard/configuracion')
+}
+
+export async function deleteCatalogoElemento(id: string) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { error } = await supabase.from('catalogo_gestion').delete().eq('id', id)
+    if (error) throw await enrichTableError('catalogo_gestion', error)
+    revalidatePath('/dashboard/configuracion')
+}

@@ -5,16 +5,18 @@ import { BarriosManager } from "@/components/configuracion/lugares/barrios-manag
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, MapPin, Building2, Users, Trees, Link } from "lucide-react";
-import { getCiudades, getBarrios, getGrupoEtnicos, getReferencias, getcompromiso } from "@/lib/actions/configuracion";
+import { getCiudades, getBarrios, getGrupoEtnicos, getReferencias, getcompromiso, getCatalogoGestion } from "@/lib/actions/configuracion";
 import { GrupoEtnicoManager } from "@/components/configuracion/grupo-etnico-manager";
 import { ReferenciasCompromisosManager } from "@/components/configuracion/referencias-compromisos-manager";
+import { ElementosManager } from "@/components/configuracion/elementos-manager";
 
-export default async function ConfiguracionPage() {
+export default async function ConfiguracionPage({ searchParams }: { searchParams?: { tab?: string } }) {
     const ciudades = await getCiudades()
     const barrios = await getBarrios()
     const grupos = await getGrupoEtnicos()
     const referencias = await getReferencias()
     const compromisos = await getcompromiso()
+    const elementos = await getCatalogoGestion()
 
     return (
         <DashboardLayout>
@@ -24,7 +26,7 @@ export default async function ConfiguracionPage() {
                     <Settings className="h-6 w-6 text-muted-foreground" />
                 </div>
 
-                <Tabs defaultValue="tipos" className="space-y-4">
+                <Tabs defaultValue={searchParams?.tab || "tipos"} className="space-y-4">
                     <TabsList>
                         <TabsTrigger value="tipos" className="flex items-center gap-2">
                             <Users className="h-4 w-4" />
@@ -45,6 +47,10 @@ export default async function ConfiguracionPage() {
                         <TabsTrigger value="referencias" className="flex items-center gap-2">
                             <Link className="h-4 w-4" />
                             Referencias & Compromisos
+                        </TabsTrigger>
+                        <TabsTrigger value="elementos" className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            Elementos Gestión
                         </TabsTrigger>
                     </TabsList>
 
@@ -114,6 +120,19 @@ export default async function ConfiguracionPage() {
                             </CardHeader>
                             <CardContent>
                                 <ReferenciasCompromisosManager initialReferencias={referencias} initialCompromisos={compromisos} ciudades={ciudades} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                    <TabsContent value="elementos">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Elementos Gestión</CardTitle>
+                                <CardDescription>
+                                    Administrar los elementos que aparecerán en los select del formulario de gestión.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <ElementosManager initialElementos={elementos} />
                             </CardContent>
                         </Card>
                     </TabsContent>
