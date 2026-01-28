@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
+// Shared UUID regex used for validating UUID inputs
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(request: NextRequest, { params }: { params: { id: string | string[] } }) {
     try {
         const cookieStore = await cookies()
@@ -26,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         id = typeof id === 'string' ? id.trim().replace(/^"|"$/g, '') : String(id || '')
 
         // Validar que el id esté presente y tenga formato UUID
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        
         if (!id || id.toLowerCase() === 'undefined' || id.toLowerCase() === 'null' || !uuidRegex.test(id)) {
             console.warn('GET /api/coordinador/[id] - id inválido:', rawId)
             return NextResponse.json({ error: `ID no tiene formato UUID válido: ${rawId}` }, { status: 400 })
@@ -147,33 +150,24 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             incomplete: !usuarioInfo,
         }
 
-        // Añadir password al resultado (siempre intentamos incluirla; se usará adminClient si hay disponible)
-        {
+        // Intentar obtener auth_user_id si es posible (adminClient preferido). No exponemos contraseñas.
+        try {
+            let adminClient: any = null
             try {
-                let adminClient: any = null
-                try {
-                    adminClient = createAdminClient()
-                } catch (e) {
-                    adminClient = null
-                }
-
-                if (adminClient) {
-                    const { data: coordData, error: coordPasswordErr } = await adminClient.from('coordinadores').select('password').eq('id', id).single()
-                    if (!coordPasswordErr && coordData && (coordData as any).password) (assembled as any).password = (coordData as any).password
-
-                    const { data: authInfo, error: authInfoErr } = await adminClient.from('coordinadores').select('auth_user_id').eq('id', id).single()
-                    if (!authInfoErr && authInfo) (assembled as any).auth_user_id = (authInfo as any).auth_user_id || null
-                } else {
-                    // Fallback: intentar con el cliente normal (puede fallar por RLS)
-                    const { data: coordData, error: coordPasswordErr } = await supabase.from('coordinadores').select('password').eq('id', id).single()
-                    if (!coordPasswordErr && coordData && (coordData as any).password) (assembled as any).password = (coordData as any).password
-
-                    const { data: authInfo, error: authInfoErr } = await supabase.from('coordinadores').select('auth_user_id').eq('id', id).single()
-                    if (!authInfoErr && authInfo) (assembled as any).auth_user_id = (authInfo as any).auth_user_id || null
-                }
+                adminClient = createAdminClient()
             } catch (e) {
-                console.warn('No se pudo obtener password/autoinfo del coordinador:', e)
+                adminClient = null
             }
+
+            if (adminClient) {
+                const { data: authInfo, error: authInfoErr } = await adminClient.from('coordinadores').select('auth_user_id').eq('id', id).single()
+                if (!authInfoErr && authInfo) (assembled as any).auth_user_id = (authInfo as any).auth_user_id || null
+            } else {
+                const { data: authInfo, error: authInfoErr } = await supabase.from('coordinadores').select('auth_user_id').eq('id', id).single()
+                if (!authInfoErr && authInfo) (assembled as any).auth_user_id = (authInfo as any).auth_user_id || null
+            }
+        } catch (e) {
+            console.warn('No se pudo obtener auth_user_id del coordinador:', e)
         }
 
         return NextResponse.json(assembled)
@@ -211,10 +205,29 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
         const { perfil_id, referencia_coordinador_id, estado, tipo, password } = body
 
+        // Normalizar campos UUID: convertir cadena vacía a null; validar formato UUID si se proporciona
+        const normalizeUuid = (val: any) => {
+            if (val === undefined) return undefined
+            if (val === null) return null
+            const s = String(val).trim().replace(/^"|"$/g, '')
+            if (s === '') return null
+            return s
+        }
+
+        const perfilIdNorm = normalizeUuid(perfil_id)
+        const referenciaIdNorm = normalizeUuid(referencia_coordinador_id)
+
+        if (perfilIdNorm !== undefined && perfilIdNorm !== null && !uuidRegex.test(String(perfilIdNorm))) {
+            return NextResponse.json({ error: `perfil_id no tiene formato UUID válido: ${perfil_id}` }, { status: 400 })
+        }
+        if (referenciaIdNorm !== undefined && referenciaIdNorm !== null && !uuidRegex.test(String(referenciaIdNorm))) {
+            return NextResponse.json({ error: `referencia_coordinador_id no tiene formato UUID válido: ${referencia_coordinador_id}` }, { status: 400 })
+        }
+
         // Preparar datos de actualización
         const updateData: any = {}
-        if (perfil_id !== undefined) updateData.perfil_id = perfil_id
-        if (referencia_coordinador_id !== undefined) updateData.referencia_coordinador_id = referencia_coordinador_id
+        if (perfilIdNorm !== undefined) updateData.perfil_id = perfilIdNorm === null ? null : perfilIdNorm
+        if (referenciaIdNorm !== undefined) updateData.referencia_coordinador_id = referenciaIdNorm === null ? null : referenciaIdNorm
         if (estado) updateData.estado = estado
         if (tipo) updateData.tipo = tipo
 
@@ -259,13 +272,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                         }
 
                         authAction = { action: 'updated', auth_user_id: coordRecord.auth_user_id }
+
+                        // Asegurar que auth_user_id permanezca en la fila tras la actualización
+                        if (coordRecord.auth_user_id) {
+                            updateData.auth_user_id = coordRecord.auth_user_id
+                        }
                     } catch (e) {
                         console.error('Excepción al actualizar contraseña en Auth:', e)
                         return NextResponse.json({ error: 'Error actualizando la contraseña en Auth' }, { status: 500 })
                     }
 
-                    // Guardar la contraseña en la tabla coordinadores (texto plano, según requerimiento de prueba)
-                    updateData.password = password
+                    // No se almacena la contraseña en la tabla por razones de seguridad. Solo persistimos auth_user_id.
                 } else {
                     // No existe auth_user_id: intentar crear el usuario en Auth o vincular uno existente
                     try {
@@ -321,8 +338,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                             authAction = { action: 'created', auth_user_id: createdAuthUserId ?? undefined }
                         }
 
-                        // Guardar la contraseña en la tabla coordinadores (texto plano, según requerimiento de prueba)
-                        updateData.password = password
+                        // No se almacena la contraseña en la tabla por razones de seguridad. Sólo persistimos auth_user_id.
                     } catch (e) {
                         console.error('Error creando usuario en Auth durante PATCH:', e)
                         return NextResponse.json({ error: 'Error creando usuario en Auth' }, { status: 500 })
@@ -349,11 +365,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
                 // Devolver la fila actualizada y detalles de la acción en Auth (si los hay)
                 return NextResponse.json({ ...updatedCoord, _auth_action: authAction })
-            } else {
-                // Sin adminClient, simplemente actualizamos la tabla coordinadores con la nueva contraseña
-                console.warn('adminClient no disponible — la actualización de contraseña en Auth será ignorada')
-                updateData.password = password
-            }
+                } else {
+                    // Sin adminClient, no podemos operar sobre Auth; no almacenamos la contraseña en la BD.
+                    console.warn('adminClient no disponible — no se puede crear/actualizar usuario en Auth desde este entorno')
+                }
         }
 
         // Para el resto de actualizaciones (sin password manejado por adminClient) intentamos actualizar usando adminClient si está disponible

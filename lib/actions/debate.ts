@@ -154,6 +154,27 @@ export async function createPlanilla(formData: FormData) {
     revalidatePath('/dashboard/debate/planillas')
 }
 
+export async function createPlanillasBulk(rows: any[]) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    if (!Array.isArray(rows)) throw new Error('Rows must be an array')
+
+    // Normalize rows: ensure correct types and remove any helper fields
+    const payload = rows.map(r => ({
+        coordinador_id: r.coordinador_id,
+        militante_id: r.militante_id,
+        radicado: r.radicado ?? 0,
+        cautivo: r.cautivo ?? 0,
+        marketing: r.marketing ?? 0,
+        impacto: r.impacto ?? 0,
+        fecha_planilla: r.fecha_planilla
+    }))
+
+    const { error } = await supabase.from('debate_planillas').insert(payload)
+    if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/debate/planillas')
+}
+
 export async function updatePlanilla(id: string, formData: FormData) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)

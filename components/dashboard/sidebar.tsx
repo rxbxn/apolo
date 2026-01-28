@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, UserCheck, UserPlus } from "lucide-react"
+import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, UserCheck, UserPlus, Shield } from "lucide-react"
 import { useState } from "react"
 
 const MENU_ITEMS = [
@@ -14,6 +14,7 @@ const MENU_ITEMS = [
   { label: "Alistamiento Debate", href: "/dashboard/debate", icon: FileText },
   { label: "Asignar Datos", href: "/dashboard/assign-data", icon: Building2 },
   { label: "Agenda", href: "/dashboard/agenda", icon: Calendar },
+  { label: "Gestión de Roles", href: "/dashboard/roles", icon: Shield },
   { label: "Configuración", href: "/dashboard/configuracion", icon: Settings },
 ]
 

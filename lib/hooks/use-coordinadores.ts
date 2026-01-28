@@ -223,7 +223,6 @@ export function useCoordinadores() {
                 referencia_nombre: referenciaNombre,
                 tipo: coordData.tipo || null,
                 auth_user_id: coordData.auth_user_id || null,
-                password: coordData.password || null, // Incluir password
                 creado_en: coordData.creado_en,
                 actualizado_en: coordData.actualizado_en,
                 incomplete: !usuarioInfo,
@@ -330,14 +329,15 @@ export function useCoordinadores() {
                 tiene_auth: !!authUserId
             })
             
+            // No almacenamos contraseñas en texto plano en la tabla coordinadores por seguridad.
+            // Persistimos sólo auth_user_id si se creó el usuario en Auth.
             const coordinadorPayload = {
                 usuario_id: coordinadorData.usuario_id,
                 email: coordinadorData.email,
-                password: coordinadorData.password,
                 tipo: coordinadorData.tipo,
                 perfil_id: coordinadorData.perfil_id || null,
                 referencia_coordinador_id: coordinadorData.referencia_coordinador_id || null,
-                auth_user_id: authUserId // null si no se pudo crear auth
+                auth_user_id: authUserId || null // null si no se pudo crear auth
             }
 
             const { data: coordinadorCreated, error: coordinadorError } = await supabase

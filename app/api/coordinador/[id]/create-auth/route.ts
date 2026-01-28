@@ -48,8 +48,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
         }
 
-        // Obtener el coordinador
-        const { data: coordRow, error: coordErr } = await adminClient.from('coordinadores').select('id, email, password, auth_user_id').eq('id', id).single()
+        // Leer body (opcional) para permitir override de email
+        let body: any = {}
+        try {
+            body = await request.json()
+        } catch (e) {
+            body = {}
+        }
+
+    // Obtener el coordinador (no leemos password desde la BD)
+    const { data: coordRow, error: coordErr } = await adminClient.from('coordinadores').select('id, email, auth_user_id').eq('id', id).single()
 
         if (coordErr) {
             const msg = (coordErr?.message || '').toLowerCase()
@@ -70,12 +78,19 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             return NextResponse.json({ error: 'El coordinador ya tiene un usuario de autenticación vinculado' }, { status: 400 })
         }
 
-        if (!coordRow.password || coordRow.password === '') {
-            return NextResponse.json({ error: 'No hay contraseña almacenada para este coordinador' }, { status: 400 })
+        // El password puede venir en el body (desde el formulario) o generarlo en servidor.
+        const email = (body && body.email && String(body.email).trim().length > 0) ? String(body.email).trim() : coordRow.email
+        let password = (body && body.password && String(body.password).trim().length > 0) ? String(body.password).trim() : null
+        if (!password) {
+            // Generar una contraseña segura temporal si no se proporciona (Node crypto)
+            try {
+                const { randomBytes } = await import('crypto')
+                password = `ApoL0-${randomBytes(12).toString('base64url').slice(0,12)}`
+            } catch (e) {
+                // Fallback seguro
+                password = `ApoL0-${Math.random().toString(36).slice(2,14)}`
+            }
         }
-
-        const email = coordRow.email
-        const password = coordRow.password
 
         try {
             const authAdmin: any = adminClient.auth.admin

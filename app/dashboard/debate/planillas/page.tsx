@@ -1,6 +1,7 @@
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PlanillasTable } from "@/components/debate/planillas/planillas-table"
 import { PlanillasForm } from "@/components/debate/planillas/planillas-form"
+import { PlanillasUpload } from "@/components/debate/planillas/planillas-upload"
 import { getPlanillas } from "@/lib/actions/debate"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -29,7 +30,10 @@ export default async function PlanillasPage() {
                             Registro y control de planillas.
                         </p>
                     </div>
-                    <PlanillasForm />
+                    <div className="flex items-center gap-2">
+                        <PlanillasUpload />
+                        <PlanillasForm />
+                    </div>
                 </div>
                 <PlanillasTable planillas={planillas} />
             </div>

@@ -19,7 +19,7 @@ export async function tienePermiso(
             p_usuario_id: usuarioId,
             p_modulo_nombre: moduloNombre,
             p_permiso_codigo: permisoCode,
-        })
+        } as any)
 
         if (error) {
             console.error('Error verificando permiso (rpc):', error)
@@ -76,7 +76,7 @@ export async function obtenerPermisosUsuario(usuarioId: string) {
         // Intentar obtener permisos desde la función RPC (lo ideal)
         const { data, error } = await supabase.rpc('obtener_permisos_usuario', {
             p_usuario_id: usuarioId,
-        })
+        } as any)
 
         if (error) {
             console.error('Error obteniendo permisos (rpc):', error)
@@ -138,6 +138,7 @@ export async function obtenerUsuarioActual() {
         } = await supabase.auth.getSession()
 
         if (!session) {
+            // Si no hay sesión, permitir continuar (importación masiva, sin autenticación)
             return null
         }
 
@@ -146,7 +147,7 @@ export async function obtenerUsuarioActual() {
             .from('usuarios')
             .select('*')
             .eq('auth_user_id', session.user.id)
-            .single()
+            .maybeSingle()
 
         if (error) {
             console.error('Error obteniendo usuario:', error)
@@ -163,7 +164,7 @@ export async function obtenerUsuarioActual() {
                 .from('coordinadores')
                 .select('usuario_id, perfil_id, email')
                 .eq('auth_user_id', session.user.id)
-                .single()
+                .maybeSingle()
 
             if (!coordErr && coord) {
                 // Intentar obtener la persona/usuario referenciado por coordinadores.usuario_id
@@ -172,7 +173,7 @@ export async function obtenerUsuarioActual() {
                         .from('usuarios')
                         .select('*')
                         .eq('id', (coord as any).usuario_id)
-                        .single()
+                        .maybeSingle()
 
                     if (!usuarioByIdErr && usuarioById) {
                         return usuarioById
@@ -196,6 +197,7 @@ export async function obtenerUsuarioActual() {
             console.warn('Error verificando coordinadores para auth_user_id:', e)
         }
 
+        // Si no existe usuario ni coordinador, retornar null (no bloquear importación ni gestión)
         return null
     } catch (error) {
         console.error('Error en obtenerUsuarioActual:', error)
@@ -301,8 +303,27 @@ export async function obtenerPermisosCRUD(
     moduloNombre: string
 ): Promise<PermisoComponente> {
     try {
-        const permisos = await obtenerPermisosUsuario(usuarioId)
+        // Obtener los perfiles del usuario para verificar si es Super Admin
+        const perfiles = await obtenerPerfilesUsuario(usuarioId)
+        const esSuperAdmin = perfiles.some(
+            (p: any) => p.perfiles && typeof p.perfiles.nombre === 'string' && p.perfiles.nombre.toLowerCase() === 'super admin'
+        )
 
+        if (esSuperAdmin) {
+            // Retornar todos los permisos habilitados
+            return {
+                crear: true,
+                leer: true,
+                actualizar: true,
+                eliminar: true,
+                exportar: true,
+                importar: true,
+                aprobar: true,
+                administrar: true,
+            }
+        }
+
+        const permisos = await obtenerPermisosUsuario(usuarioId)
         const permisosModulo = permisos.filter(
             (p) => p.modulo_nombre === moduloNombre
         )

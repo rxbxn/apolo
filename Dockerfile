@@ -60,7 +60,7 @@ ARG SUPABASE_SERVICE_ROLE_KEY
 # Set production environment
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+ENV PORT=3001
 ENV HOSTNAME=0.0.0.0
 
 # CRITICAL: Re-set environment variables in runtime stage
@@ -87,11 +87,11 @@ RUN echo "📁 Verificando .next:" && ls -la .next/ || echo "❌ .next no encont
 USER nextjs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
+  CMD curl -f http://localhost:3001/api/health || exit 1
 
 # Start the application
-CMD ["node", "server.js", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["node", "server.js", "--hostname", "0.0.0.0", "--port", "3001"]

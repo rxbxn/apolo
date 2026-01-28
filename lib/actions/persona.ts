@@ -154,13 +154,68 @@ export async function importPersonas(personas: Persona[]) {
     const supabase = createClient(cookieStore)
 
     try {
-        // Sincronizar catálogos primero
-        await syncCatalogs(personas)
+        // Sanitizar los datos: convertir la cadena literal 'null' o cadenas vacías a null,
+        // eliminar id no numérico, convertir números y fechas a los tipos adecuados.
+        const isNullString = (v: any) => v === null || v === undefined || (typeof v === 'string' && v.trim().toLowerCase() === 'null') || (typeof v === 'string' && v.trim() === '')
+
+        const sanitizePersona = (p: Persona): any => {
+            const out: any = {}
+            for (const key of Object.keys(p) as Array<keyof Persona>) {
+                const val = (p as any)[key]
+
+                if (isNullString(val)) {
+                    out[key] = null
+                    continue
+                }
+
+                // Numeric fields
+                if (['comp_difusion', 'comp_marketing', 'comp_impacto', 'comp_cautivo'].includes(String(key))) {
+                    if (typeof val === 'number') out[key] = val
+                    else if (typeof val === 'string' && val.replace(/\D/g, '') !== '') out[key] = parseInt(val.replace(/\D/g, ''), 10)
+                    else out[key] = null
+                    continue
+                }
+
+                // ID handling: keep numeric ids, otherwise remove (let DB assign)
+                if (key === 'id') {
+                    if (typeof val === 'number') out.id = val
+                    else if (typeof val === 'string' && val.replace(/\D/g, '') !== '') out.id = parseInt(val.replace(/\D/g, ''), 10)
+                    else {
+                        // leave undefined -> do not send id
+                    }
+                    continue
+                }
+
+                // Date fields: keep ISO strings, otherwise try to coerce or set null
+                if (['fecha', 'nacimiento', 'fecha_verificacion_sticker'].includes(String(key))) {
+                    if (typeof val === 'string') {
+                        const s = val.trim()
+                        // If looks like ISO or date, keep as-is; otherwise null
+                        const parsed = Date.parse(s)
+                        out[key] = isNaN(parsed) ? null : new Date(parsed).toISOString()
+                    } else if (val instanceof Date) {
+                        out[key] = val.toISOString()
+                    } else {
+                        out[key] = null
+                    }
+                    continue
+                }
+
+                // Default: strings -> trimmed string
+                out[key] = (val !== null && val !== undefined) ? String(val).trim() : null
+            }
+            return out
+        }
+
+        const sanitized = personas.map(sanitizePersona)
+
+        // Sincronizar catálogos primero con los datos sanitizados
+        await syncCatalogs(sanitized)
 
         // Inserción masiva optimizada
         const { data, error } = await supabase
             .from("persona")
-            .insert(personas)
+            .insert(sanitized)
             .select()
 
         if (error) {

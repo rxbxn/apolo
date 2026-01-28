@@ -8,7 +8,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
-      port: process.env.PORT || '3000',
+  port: process.env.PORT || '3001',
       version: process.env.npm_package_version || '1.0.0',
       memory: {
         used: Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 100) / 100,
@@ -30,7 +30,7 @@ export async function GET() {
       status: 'ERROR', 
       timestamp: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Unknown error',
-      port: process.env.PORT || '3000'
+  port: process.env.PORT || '3001'
     }
 
     return NextResponse.json(errorResponse, { status: 500 })

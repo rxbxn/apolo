@@ -328,7 +328,15 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
         if (!initialData?.coordinador_id) return
         setCreatingAuthUser(true)
         try {
-            const res = await fetch(`/api/coordinador/${initialData.coordinador_id}/create-auth`, { method: 'POST' })
+            // Obtener email actual del formulario (puede haber sido modificado)
+            const currentEmail = getValues('email') || initialData?.email
+
+            const res = await fetch(`/api/coordinador/${initialData.coordinador_id}/create-auth`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentEmail }),
+            })
+
             const data = await res.json()
             if (!res.ok) {
                 toast.error(data.error || 'Error creando usuario en Auth')
@@ -450,7 +458,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                                     id="email"
                                     type="email"
                                     placeholder="correo@ejemplo.com"
-                                    disabled={isEditing}
                                     {...register("email")}
                                     className="border-x-0 border-t-0 border-b rounded-none px-0 focus-visible:ring-0 shadow-none"
                                 />
