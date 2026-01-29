@@ -185,7 +185,7 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                 getCoordinadoresActivos(),
                 getDirigentes(),
                 getLocalidades(),
-                getCatalogoOpciones('elemento'),
+                fetch('/api/elementos').then(res => res.json()),
                 getCatalogoOpciones('unidad'),
                 getCatalogoOpciones('categoria'),
                 getCatalogoOpciones('sector'),

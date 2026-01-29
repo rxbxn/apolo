@@ -10,7 +10,9 @@ import { GrupoEtnicoManager } from "@/components/configuracion/grupo-etnico-mana
 import { ReferenciasCompromisosManager } from "@/components/configuracion/referencias-compromisos-manager";
 import { ElementosManager } from "@/components/configuracion/elementos-manager";
 
-export default async function ConfiguracionPage({ searchParams }: { searchParams?: { tab?: string } }) {
+export default async function ConfiguracionPage({ searchParams }: { searchParams?: any }) {
+    // `searchParams` puede ser una Promise en Next.js App Router; unwrapearla antes de usar
+    const resolvedSearchParams = await searchParams
     const ciudades = await getCiudades()
     const barrios = await getBarrios()
     const grupos = await getGrupoEtnicos()
@@ -26,7 +28,7 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
                     <Settings className="h-6 w-6 text-muted-foreground" />
                 </div>
 
-                <Tabs defaultValue={searchParams?.tab || "tipos"} className="space-y-4">
+                <Tabs defaultValue={resolvedSearchParams?.tab || "tipos"} className="space-y-4">
                     <TabsList>
                         <TabsTrigger value="tipos" className="flex items-center gap-2">
                             <Users className="h-4 w-4" />

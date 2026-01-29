@@ -415,13 +415,23 @@ export type CatalogoElemento = {
 export async function getCatalogoGestion(tipo?: string) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-
     try {
-        let query = supabase.from('catalogo_gestion').select('*').order('elemento')
-        const { data, error } = await query
-        if (error) throw await enrichTableError('catalogo_gestion', error)
+        const { data, error } = await supabase.from('catalogo_gestion').select('*').order('elemento')
+        if (error) {
+            // Si la tabla no existe en esta instancia, devolver un fallback vacío en vez de lanzar 500
+            if (isTableNotFoundError(error)) {
+                console.warn("catalogo_gestion no existe en la DB del servidor. Devolviendo lista vacía.")
+                return []
+            }
+            throw await enrichTableError('catalogo_gestion', error)
+        }
         return data || []
     } catch (error) {
+        // Si el error es por tabla ausente, retornamos vacío como último recurso
+        if (isTableNotFoundError(error)) {
+            console.warn("catalogo_gestion no existe (catch). Devolviendo lista vacía.")
+            return []
+        }
         throw await enrichTableError('catalogo_gestion', error)
     }
 }
@@ -429,12 +439,14 @@ export async function getCatalogoGestion(tipo?: string) {
 export async function createCatalogoElemento(formData: FormData) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-
     const data = {
+        // Establecer tipo por defecto para los elementos creados desde el manager de elementos
+        tipo: String(formData.get('tipo') || 'elemento'),
         elemento: formData.get('elemento') || null,
         unidad: formData.get('unidad') || null,
         categoria: formData.get('categoria') || null,
         sector: formData.get('sector') || null,
+        nombre: formData.get('elemento') || null
     }
 
     const { error } = await supabase.from('catalogo_gestion').insert([data])

@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"db-manager": {
+			"url": "https://mcpdbmanager.aspsols.com/mcp",
+			"type": "http",
+			"headers": {
+				"Authorization": "Bearer sk-mcp-1234567890abcdefdfgfddcvzzxce",
+				"X-Connection-Name": "apolo"
+			}
+		}
+	},
+	"inputs": []
+}
