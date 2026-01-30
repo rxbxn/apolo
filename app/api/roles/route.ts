@@ -1,5 +1,4 @@
 // This file has been cleaned up to provide a functional API for roles without duplicates or old fragments.
-"use server"
 
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
@@ -8,9 +7,14 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // GET: Listar usuarios y roles
-export async function GET() {
+export async function GET(request: Request) {
     try {
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        const { searchParams } = new URL(request.url)
+        const page = parseInt(searchParams.get('page') || '1')
+        const pageSize = parseInt(searchParams.get('pageSize') || '10')
+        const search = searchParams.get('search') || ''
+
         // Perfiles
         const { data: perfiles, error: perfilesError } = await supabase
             .from("perfiles")
@@ -18,11 +22,20 @@ export async function GET() {
             .eq("activo", true)
             .order("nivel_jerarquico", { ascending: true })
         if (perfilesError) return NextResponse.json({ error: perfilesError.message }, { status: 500 })
-        // Usuarios
-        const { data: usuarios, error: usuariosError } = await supabase
+
+        // Usuarios con paginación
+        let query = supabase
             .from("usuarios")
-            .select("id, nombres, apellidos, email, auth_user_id, estado")
+            .select("id, nombres, apellidos, email, auth_user_id, estado, numero_documento", { count: 'exact' })
             .order("nombres", { ascending: true })
+
+        if (search) {
+            query = query.or(`nombres.ilike.%${search}%,apellidos.ilike.%${search}%,email.ilike.%${search}%`)
+        }
+
+        const from = (page - 1) * pageSize
+        const to = from + pageSize - 1
+        const { data: usuarios, error: usuariosError, count } = await query.range(from, to)
         if (usuariosError) return NextResponse.json({ error: usuariosError.message }, { status: 500 })
         // Asignaciones usuario_perfil
         const { data: usuarioPerfil } = await supabase
@@ -44,7 +57,13 @@ export async function GET() {
                 user_role: userRole?.role || null,
             }
         })
-        return NextResponse.json({ usuarios: usuariosConRoles, perfiles: perfiles || [] })
+        return NextResponse.json({ 
+            usuarios: usuariosConRoles, 
+            perfiles: perfiles || [], 
+            total: count || 0,
+            page,
+            pageSize
+        })
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 })
     }
@@ -75,6 +94,67 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "usuario_id y perfil_id son requeridos" }, { status: 400 })
         }
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+        // Obtener datos del usuario
+        const { data: usuario, error: usuarioError } = await supabase
+            .from("usuarios")
+            .select("id, nombres, apellidos, email, auth_user_id, numero_documento")
+            .eq("id", usuario_id)
+            .single()
+        if (usuarioError || !usuario) {
+            return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+        }
+
+        let finalAuthUserId = auth_user_id || usuario.auth_user_id
+
+        // Si no tiene auth_user_id, crear usuario en Supabase Auth
+        if (!finalAuthUserId) {
+            if (!usuario.email) {
+                return NextResponse.json({ error: "El usuario debe tener un email para crear la cuenta de autenticación" }, { status: 400 })
+            }
+
+            if (!usuario.numero_documento) {
+                return NextResponse.json({ error: "El usuario debe tener número de documento para crear la contraseña temporal" }, { status: 400 })
+            }
+
+            try {
+                // Crear usuario en Supabase Auth
+                const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+                    email: usuario.email,
+                    password: usuario.numero_documento, // Usar número de documento como contraseña
+                    email_confirm: true, // Confirmar email automáticamente
+                    user_metadata: {
+                        nombres: usuario.nombres,
+                        apellidos: usuario.apellidos,
+                        numero_documento: usuario.numero_documento,
+                        full_name: `${usuario.nombres} ${usuario.apellidos}`
+                    }
+                })
+
+                if (authError) {
+                    console.error('Error creando usuario en auth:', authError)
+                    return NextResponse.json({ error: `Error creando cuenta de autenticación: ${authError.message}` }, { status: 500 })
+                }
+
+                finalAuthUserId = authUser.user.id
+
+                // Actualizar el auth_user_id en la tabla usuarios
+                const { error: updateError } = await supabase
+                    .from("usuarios")
+                    .update({ auth_user_id: finalAuthUserId })
+                    .eq("id", usuario_id)
+
+                if (updateError) {
+                    console.error('Error actualizando auth_user_id:', updateError)
+                    // No retornamos error aquí porque el usuario ya se creó en auth
+                }
+
+            } catch (err: any) {
+                console.error('Error en creación de auth user:', err)
+                return NextResponse.json({ error: `Error creando usuario de autenticación: ${err.message}` }, { status: 500 })
+            }
+        }
+
         // Obtener el nombre del perfil
         const { data: perfil, error: perfilError } = await supabase
             .from("perfiles")
@@ -84,12 +164,14 @@ export async function POST(request: Request) {
         if (perfilError || !perfil) {
             return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 })
         }
+
         // Desactivar asignaciones anteriores
         await supabase
             .from("usuario_perfil")
             .update({ activo: false, fecha_revocacion: new Date().toISOString() })
             .eq("usuario_id", usuario_id)
             .eq("activo", true)
+
         // Insertar nueva asignación
         const { data: newAssignment, error: insertError } = await supabase
             .from("usuario_perfil")
@@ -97,12 +179,27 @@ export async function POST(request: Request) {
             .select()
             .single()
         if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
-        // Actualizar user_roles si corresponde
-        if (auth_user_id) {
-            await supabase.from("user_roles").delete().eq("user_id", auth_user_id)
-            await supabase.from("user_roles").insert({ user_id: auth_user_id, role: perfil.nombre, created_at: new Date().toISOString() })
+
+        // Actualizar user_roles
+        if (finalAuthUserId) {
+            await supabase.from("user_roles").delete().eq("user_id", finalAuthUserId)
+            await supabase.from("user_roles").insert({
+                user_id: finalAuthUserId,
+                role: perfil.nombre,
+                created_at: new Date().toISOString()
+            })
         }
-        return NextResponse.json({ success: true, message: `Rol "${perfil.nombre}" asignado correctamente`, assignment: newAssignment })
+
+        const message = finalAuthUserId !== (auth_user_id || usuario.auth_user_id)
+            ? `Rol "${perfil.nombre}" asignado correctamente. Se creó la cuenta de autenticación para el usuario.`
+            : `Rol "${perfil.nombre}" asignado correctamente`
+
+        return NextResponse.json({
+            success: true,
+            message,
+            assignment: newAssignment,
+            auth_created: finalAuthUserId !== (auth_user_id || usuario.auth_user_id)
+        })
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 })
     }
@@ -158,14 +255,24 @@ export async function DELETE(request: Request) {
         if (!usuario_id) {
             return NextResponse.json({ error: "usuario_id es requerido" }, { status: 400 })
         }
+
+        // Obtener el auth_user_id del usuario
+        const { data: userData } = await supabase
+            .from("usuarios")
+            .select("auth_user_id")
+            .eq("id", usuario_id)
+            .single()
+
         await supabase
             .from("usuario_perfil")
             .update({ activo: false, fecha_revocacion: new Date().toISOString() })
             .eq("usuario_id", usuario_id)
             .eq("activo", true)
-        if (auth_user_id) {
-            await supabase.from("user_roles").delete().eq("user_id", auth_user_id)
+
+        if (userData?.auth_user_id || auth_user_id) {
+            await supabase.from("user_roles").delete().eq("user_id", userData?.auth_user_id || auth_user_id)
         }
+
         return NextResponse.json({ success: true, message: "Rol removido correctamente" })
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import {
     Select,
@@ -39,6 +39,7 @@ interface Usuario {
     perfil_asignado: Perfil | null
     perfil_id: string | null
     user_role: string | null
+    numero_documento: string | null
 }
 
 export function RolesManager() {
@@ -47,15 +48,27 @@ export function RolesManager() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState<string | null>(null)
     const [searchTerm, setSearchTerm] = useState("")
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize] = useState(10)
+    const [total, setTotal] = useState(0)
+    const searchInputRef = useRef<HTMLInputElement>(null)
 
-    const fetchData = async () => {
+    const fetchData = async (page = 1, search = "") => {
         setLoading(true)
         try {
-            const res = await fetch("/api/roles")
+            const params = new URLSearchParams({
+                page: page.toString(),
+                pageSize: pageSize.toString()
+            })
+            if (search) params.append('search', search)
+            const res = await fetch(`/api/roles?${params.toString()}`)
             if (!res.ok) throw new Error("Error cargando datos")
             const data = await res.json()
             setUsuarios(data.usuarios || [])
             setPerfiles(data.perfiles || [])
+            setTotal(data.total || 0)
+            setCurrentPage(page)
         } catch (err: any) {
             console.error(err)
             toast.error("Error cargando usuarios y roles")
@@ -65,8 +78,41 @@ export function RolesManager() {
     }
 
     useEffect(() => {
-        fetchData()
-    }, [])
+        fetchData(currentPage)
+    }, [currentPage])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm)
+            setCurrentPage(1) // Reset to first page when searching
+            fetchData(1, searchTerm)
+        }, 1000) // Aumenté a 1000ms para mejor experiencia de usuario
+        return () => clearTimeout(timer)
+    }, [searchTerm])
+
+    // Mantener el foco en el input de búsqueda mientras el usuario escribe
+    useEffect(() => {
+        if (searchInputRef.current && searchTerm && !loading) {
+            // Solo enfocamos si hay texto y no está cargando
+            const input = searchInputRef.current
+            const length = input.value.length
+            input.focus()
+            input.setSelectionRange(length, length) // Cursor al final
+        }
+    }, [searchTerm, loading])
+
+    // Indicar si la búsqueda está debounced (con un pequeño delay para UX)
+    const [showSearchingIndicator, setShowSearchingIndicator] = useState(false)
+    const isSearching = searchTerm !== debouncedSearchTerm
+
+    useEffect(() => {
+        if (isSearching) {
+            const timer = setTimeout(() => setShowSearchingIndicator(true), 200)
+            return () => clearTimeout(timer)
+        } else {
+            setShowSearchingIndicator(false)
+        }
+    }, [isSearching])
 
     const handleAssignRole = async (usuario: Usuario, perfilId: string) => {
         if (!perfilId) return
@@ -84,7 +130,15 @@ export function RolesManager() {
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "Error asignando rol")
             toast.success(data.message || "Rol asignado correctamente")
-            fetchData()
+
+            // Si se creó una cuenta de autenticación, mostrar información adicional
+            if (data.auth_created) {
+                toast.info(`Se creó una cuenta de autenticación para ${usuario.nombres}. La contraseña es su número de documento: ${usuario.numero_documento || 'N/A'}`, {
+                    duration: 10000, // Mostrar por más tiempo
+                })
+            }
+
+            fetchData(currentPage)
         } catch (err: any) {
             console.error(err)
             toast.error(err.message || "Error asignando rol")
@@ -105,7 +159,7 @@ export function RolesManager() {
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "Error quitando rol")
             toast.success(data.message || "Rol removido correctamente")
-            fetchData()
+            fetchData(currentPage)
         } catch (err: any) {
             console.error(err)
             toast.error(err.message || "Error quitando rol")
@@ -114,12 +168,7 @@ export function RolesManager() {
         }
     }
 
-    const filteredUsuarios = usuarios.filter((u) => {
-        const term = searchTerm.toLowerCase()
-        const fullName = `${u.nombres || ""} ${u.apellidos || ""}`.toLowerCase()
-        const email = (u.email || "").toLowerCase()
-        return fullName.includes(term) || email.includes(term)
-    })
+    const filteredUsuarios = usuarios
 
     const getRoleBadgeColor = (nivelJerarquico?: number) => {
         if (nivelJerarquico === undefined || nivelJerarquico === null) return "secondary"
@@ -145,22 +194,37 @@ export function RolesManager() {
                 <div className="flex items-center gap-2">
                     <Shield className="h-5 w-5" />
                     <span className="text-sm text-muted-foreground">
-                        {usuarios.length} usuarios • {perfiles.length} roles disponibles
+                        {total} usuarios totales • {perfiles.length} roles disponibles
                     </span>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchData}>
+                <Button variant="outline" size="sm" onClick={() => {
+                    setSearchTerm("")
+                    setDebouncedSearchTerm("")
+                    setCurrentPage(1)
+                    fetchData(1, "")
+                }}>
                     <RefreshCw className="h-4 w-4 mr-1" />
                     Refrescar
                 </Button>
             </div>
 
             {/* Search */}
-            <Input
-                placeholder="Buscar por nombre o email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-md"
-            />
+            <div className="relative max-w-md">
+                <Input
+                    ref={searchInputRef}
+                    placeholder="Buscar por nombre o email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pr-8"
+                    disabled={loading}
+                />
+                {showSearchingIndicator && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Buscando...</span>
+                    </div>
+                )}
+            </div>
 
             {/* Table */}
             <div className="border rounded-lg">
@@ -178,7 +242,16 @@ export function RolesManager() {
                         {filteredUsuarios.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                    No se encontraron usuarios
+                                    {loading ? (
+                                        <div className="flex items-center justify-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            <span>Buscando...</span>
+                                        </div>
+                                    ) : debouncedSearchTerm ? (
+                                        `No se encontraron usuarios para "${debouncedSearchTerm}"`
+                                    ) : (
+                                        "No se encontraron usuarios"
+                                    )}
                                 </TableCell>
                             </TableRow>
                         ) : (
@@ -252,6 +325,36 @@ export function RolesManager() {
                     </TableBody>
                 </Table>
             </div>
+
+            {/* Pagination */}
+            {total > pageSize && (
+                <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-muted-foreground">
+                        Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, total)} de {total} usuarios
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                        >
+                            Anterior
+                        </Button>
+                        <span className="text-sm">
+                            Página {currentPage} de {Math.ceil(total / pageSize)}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(prev => Math.min(Math.ceil(total / pageSize), prev + 1))}
+                            disabled={currentPage === Math.ceil(total / pageSize)}
+                        >
+                            Siguiente
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* Roles legend */}
             <div className="mt-4 p-3 bg-muted/30 rounded-lg">
