@@ -32,7 +32,7 @@ const getStatusColor = (status: string) => {
 export function CoordinadoresTable() {
     const router = useRouter()
     const { listar, eliminar, loading } = useCoordinadores()
-    const { permisos } = usePermisos("Módulo Coordinador")
+    const { permisos, loading: permisosLoading } = usePermisos("Módulo Coordinador")
     const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
     const [coordinadores, setCoordinadores] = useState<any[]>([])
@@ -87,6 +87,17 @@ export function CoordinadoresTable() {
             console.error("Error eliminando coordinador:", error)
             toast.error("Error al eliminar coordinador")
         }
+    }
+
+    if (permisosLoading) {
+        return (
+            <Card className="border-0 shadow-sm">
+                <CardContent className="p-8 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Cargando permisos...</p>
+                </CardContent>
+            </Card>
+        )
     }
 
     if (!permisos?.leer) {

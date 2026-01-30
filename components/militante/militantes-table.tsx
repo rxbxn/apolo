@@ -56,6 +56,15 @@ export function MilitantesTable() {
 
     const pageSize = 5
 
+    // Función para limpiar filtros
+    const limpiarFiltros = () => {
+        setSearch("")
+        setEstadoFilter("todos")
+        setTipoFilter("todos")
+        setCoordinadorFilter("todos")
+        setCurrentPage(1)
+    }
+
     // Cargar datos iniciales
     useEffect(() => {
         cargarDatosIniciales()
@@ -212,7 +221,17 @@ export function MilitantesTable() {
                         </Select>
                     </div>
 
-                    {/* Tabla */}
+                    {/* Botón limpiar filtros */}
+                    <div className="flex justify-end">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={limpiarFiltros}
+                            className="text-muted-foreground hover:text-foreground"
+                        >
+                            Limpiar filtros
+                        </Button>
+                    </div>
                     <div className="border rounded-lg overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full">
