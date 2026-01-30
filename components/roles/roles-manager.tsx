@@ -46,6 +46,7 @@ export function RolesManager() {
     const [usuarios, setUsuarios] = useState<Usuario[]>([])
     const [perfiles, setPerfiles] = useState<Perfil[]>([])
     const [loading, setLoading] = useState(true)
+    const [searching, setSearching] = useState(false)
     const [saving, setSaving] = useState<string | null>(null)
     const [searchTerm, setSearchTerm] = useState("")
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
@@ -54,8 +55,12 @@ export function RolesManager() {
     const [total, setTotal] = useState(0)
     const searchInputRef = useRef<HTMLInputElement>(null)
 
-    const fetchData = async (page = 1, search = "") => {
-        setLoading(true)
+    const fetchData = async (page = 1, search = "", isSearchRequest = false) => {
+        if (isSearchRequest) {
+            setSearching(true)
+        } else {
+            setLoading(true)
+        }
         try {
             const params = new URLSearchParams({
                 page: page.toString(),
@@ -74,6 +79,7 @@ export function RolesManager() {
             toast.error("Error cargando usuarios y roles")
         } finally {
             setLoading(false)
+            setSearching(false)
         }
     }
 
@@ -85,34 +91,34 @@ export function RolesManager() {
         const timer = setTimeout(() => {
             setDebouncedSearchTerm(searchTerm)
             setCurrentPage(1) // Reset to first page when searching
-            fetchData(1, searchTerm)
+            fetchData(1, searchTerm, true) // Indicar que es una búsqueda
         }, 1000) // Aumenté a 1000ms para mejor experiencia de usuario
         return () => clearTimeout(timer)
     }, [searchTerm])
 
     // Mantener el foco en el input de búsqueda mientras el usuario escribe
     useEffect(() => {
-        if (searchInputRef.current && searchTerm && !loading) {
-            // Solo enfocamos si hay texto y no está cargando
+        if (searchInputRef.current && searchTerm && !searching) {
+            // Solo enfocamos si hay texto y no está buscando
             const input = searchInputRef.current
             const length = input.value.length
             input.focus()
             input.setSelectionRange(length, length) // Cursor al final
         }
-    }, [searchTerm, loading])
+    }, [searchTerm, searching])
 
     // Indicar si la búsqueda está debounced (con un pequeño delay para UX)
     const [showSearchingIndicator, setShowSearchingIndicator] = useState(false)
     const isSearching = searchTerm !== debouncedSearchTerm
 
     useEffect(() => {
-        if (isSearching) {
-            const timer = setTimeout(() => setShowSearchingIndicator(true), 200)
-            return () => clearTimeout(timer)
+        if (searching) {
+            setShowSearchingIndicator(true)
         } else {
-            setShowSearchingIndicator(false)
+            const timer = setTimeout(() => setShowSearchingIndicator(false), 200)
+            return () => clearTimeout(timer)
         }
-    }, [isSearching])
+    }, [searching])
 
     const handleAssignRole = async (usuario: Usuario, perfilId: string) => {
         if (!perfilId) return
@@ -216,7 +222,6 @@ export function RolesManager() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pr-8"
-                    disabled={loading}
                 />
                 {showSearchingIndicator && (
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
@@ -242,7 +247,7 @@ export function RolesManager() {
                         {filteredUsuarios.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                    {loading ? (
+                                    {searching ? (
                                         <div className="flex items-center justify-center gap-2">
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                             <span>Buscando...</span>
