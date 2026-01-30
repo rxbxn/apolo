@@ -62,7 +62,7 @@ export function PersonasTable() {
   const router = useRouter()
   const { listar, eliminar, loading: personasLoading, cambiarEstado, actualizar, obtenerPorId: obtenerUsuarioPorId } = usePersonas()
   const { ciudades, zonas, loading: catalogosLoading } = useCatalogos()
-  const { permisos } = usePermisos("Módulo Personas")
+  const { permisos, loading: permisosLoading } = usePermisos("Módulo Personas")
   const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
   const [personas, setPersonas] = useState<Usuario[]>([])
@@ -113,7 +113,7 @@ export function PersonasTable() {
   const [obsValue, setObsValue] = useState("")
   const [obsUsuarioId, setObsUsuarioId] = useState<string | null>(null)
 
-  const pageSize = 10
+  const pageSize = 5
 
   useEffect(() => {
     cargarPersonas()
@@ -170,9 +170,22 @@ export function PersonasTable() {
   }
 
 
-  const loading = personasLoading || catalogosLoading
+  const loading = personasLoading || catalogosLoading || permisosLoading
 
-  if (!permisos?.leer) {
+  if (permisosLoading || !permisos) {
+    return (
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-8 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Verificando permisos...</span>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!permisos.leer) {
     return (
       <Card className="border-0 shadow-sm">
         <CardContent className="p-8 text-center">

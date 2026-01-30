@@ -37,14 +37,14 @@ export function usePersonas() {
         return new Error('Error desconocido')
     }
 
-    const listar = useCallback(async (filtros: FiltrosPersonas = {}, page = 1, pageSize = 10) => {
+    const listar = useCallback(async (filtros: FiltrosPersonas = {}, page = 1, pageSize = 5) => {
         try {
             setLoading(true)
             setError(null)
 
             let query = supabase
                 .from('usuarios')
-                .select('*, ciudades(nombre), zonas(nombre)', { count: 'exact' })
+                .select('id, nombres, apellidos, email, numero_documento, celular, estado, ciudad_id, zona_id, creado_en, actualizado_en', { count: 'exact' })
 
             // Aplicar filtros
             if (filtros.busqueda) {
@@ -77,8 +77,27 @@ export function usePersonas() {
 
             if (queryError) throw queryError
 
+            // Obtener nombres de ciudades y zonas para los usuarios de esta página
+            const ciudadIds = [...new Set((data || []).map(u => u.ciudad_id).filter(Boolean))]
+            const zonaIds = [...new Set((data || []).map(u => u.zona_id).filter(Boolean))]
+
+            const [ciudadesData, zonasData] = await Promise.all([
+                ciudadIds.length > 0 ? supabase.from('ciudades').select('id, nombre').in('id', ciudadIds) : Promise.resolve({ data: [], error: null }),
+                zonaIds.length > 0 ? supabase.from('zonas').select('id, nombre').in('id', zonaIds) : Promise.resolve({ data: [], error: null })
+            ])
+
+            const ciudadesMap = new Map((ciudadesData.data || []).map(c => [c.id, c.nombre]))
+            const zonasMap = new Map((zonasData.data || []).map(z => [z.id, z.nombre]))
+
+            // Combinar datos
+            const dataWithNames = (data || []).map(user => ({
+                ...user,
+                ciudades: user.ciudad_id ? { nombre: ciudadesMap.get(user.ciudad_id) || `Ciudad ${user.ciudad_id}` } : null,
+                zonas: user.zona_id ? { nombre: zonasMap.get(user.zona_id) || `Zona ${user.zona_id}` } : null
+            }))
+
             return {
-                data: data || [],
+                data: dataWithNames,
                 count: count || 0,
                 page,
                 pageSize,
