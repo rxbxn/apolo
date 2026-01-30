@@ -101,7 +101,7 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Usar directamente el cliente de Supabase en lugar de la API route
+            // Usar la vista que ya incluye todos los joins
             let query = supabase
                 .from('v_militantes_completo')
                 .select('*', { count: 'exact' })
@@ -133,8 +133,60 @@ export function useMilitantes() {
 
             if (error) throw error
 
+            // Transformar datos para mantener compatibilidad con la interfaz
+            const transformedData = (data || []).map(item => ({
+                militante_id: item.militante_id,
+                usuario_id: item.usuario_id,
+                tipo: item.tipo,
+                coordinador_id: item.coordinador_id,
+                compromiso_marketing: item.compromiso_marketing,
+                compromiso_cautivo: item.compromiso_cautivo,
+                compromiso_impacto: item.compromiso_impacto,
+                formulario: item.formulario,
+                estado: item.estado,
+                creado_en: item.creado_en,
+                actualizado_en: item.actualizado_en,
+                
+                // Datos del usuario
+                nombres: item.nombres,
+                apellidos: item.apellidos,
+                tipo_documento: item.tipo_documento,
+                numero_documento: item.numero_documento,
+                email: item.email,
+                celular: item.celular,
+                whatsapp: item.whatsapp,
+                telefono_fijo: item.telefono_fijo,
+                direccion: item.direccion,
+                fecha_nacimiento: item.fecha_nacimiento,
+                genero: item.genero,
+                estado_civil: item.estado_civil,
+                
+                // Datos de ubicación
+                ciudad_id: item.ciudad_id,
+                ciudad_nombre: item.ciudad_nombre,
+                zona_id: item.zona_id,
+                zona_nombre: item.zona_nombre,
+                
+                // Datos demográficos
+                nivel_escolaridad: item.nivel_escolaridad,
+                perfil_ocupacion: item.perfil_ocupacion,
+                tipo_vivienda: item.tipo_vivienda,
+                estrato: item.estrato,
+                ingresos_rango: item.ingresos_rango,
+                tiene_hijos: item.tiene_hijos,
+                numero_hijos: item.numero_hijos,
+                
+                // Datos del coordinador
+                coordinador_email: item.coordinador_email,
+                coordinador_nombre: item.coordinador_nombre,
+                
+                // Datos del tipo
+                tipo_descripcion: item.tipo_descripcion,
+                tipo_codigo: item.tipo_codigo
+            }))
+
             return {
-                data: (data as Militante[]) || [],
+                data: transformedData as Militante[],
                 count: count || 0,
                 page,
                 pageSize,

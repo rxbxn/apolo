@@ -18,6 +18,8 @@ import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide
 import { useMilitantes } from "@/lib/hooks/use-militantes"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { useConfirm } from "@/lib/hooks/use-confirm"
+import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
+import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
 import { toast } from "sonner"
 
 const getStatusColor = (status: string) => {
@@ -31,9 +33,11 @@ const getStatusColor = (status: string) => {
 
 export function MilitantesTable() {
     const router = useRouter()
-    const { listar, eliminar, loading } = useMilitantes()
-    const { permisos } = usePermisos("Módulo Militante")
+    const { listar, eliminar, loading: militantesLoading } = useMilitantes()
+    const { permisos, loading: permisosLoading } = usePermisos("Módulo Militante")
     const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
+    const { listar: listarCoordinadores } = useCoordinadores()
+    const { listar: listarTiposMilitante } = useTiposMilitante()
 
     const [militantes, setMilitantes] = useState<any[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -43,12 +47,39 @@ export function MilitantesTable() {
     // Filtros
     const [search, setSearch] = useState("")
     const [estadoFilter, setEstadoFilter] = useState<string>("todos")
+    const [tipoFilter, setTipoFilter] = useState<string>("todos")
+    const [coordinadorFilter, setCoordinadorFilter] = useState<string>("todos")
 
-    const pageSize = 10
+    // Datos para filtros
+    const [coordinadores, setCoordinadores] = useState<any[]>([])
+    const [tiposMilitante, setTiposMilitante] = useState<any[]>([])
+
+    const pageSize = 5
+
+    // Cargar datos iniciales
+    useEffect(() => {
+        cargarDatosIniciales()
+    }, [])
 
     useEffect(() => {
         cargarMilitantes()
-    }, [currentPage, search, estadoFilter])
+    }, [currentPage, search, estadoFilter, tipoFilter, coordinadorFilter])
+
+    async function cargarDatosIniciales() {
+        try {
+            const [coordsResult, tiposResult] = await Promise.all([
+                listarCoordinadores(),
+                listarTiposMilitante()
+            ])
+            setCoordinadores(coordsResult?.data || [])
+            setTiposMilitante(tiposResult?.data || [])
+        } catch (error) {
+            console.error("Error cargando datos iniciales:", error)
+            // En caso de error, asegurarse de que sean arrays vacíos
+            setCoordinadores([])
+            setTiposMilitante([])
+        }
+    }
 
     async function cargarMilitantes() {
         try {
@@ -56,6 +87,8 @@ export function MilitantesTable() {
 
             if (search) filtros.busqueda = search
             if (estadoFilter !== "todos") filtros.estado = estadoFilter
+            if (tipoFilter !== "todos") filtros.tipo = tipoFilter
+            if (coordinadorFilter !== "todos") filtros.coordinador_id = coordinadorFilter
 
             const result = await listar(filtros, currentPage, pageSize)
 
@@ -89,32 +122,53 @@ export function MilitantesTable() {
         }
     }
 
+    if (permisosLoading || !permisos) {
+        return (
+            <Card className="border-0 shadow-sm">
+                <CardContent className="p-8 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Verificando permisos...</span>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!permisos.leer) {
+        return (
+            <Card className="border-0 shadow-sm">
+                <CardContent className="p-8 text-center">
+                    <p className="text-muted-foreground">No tienes permisos para ver este módulo</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
         <>
             <Card>
             <CardContent className="p-6">
                 <div className="space-y-4">
                     {/* Filtros */}
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <div className="flex-1">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                                <Input
-                                    placeholder="Buscar por nombre o documento..."
-                                    value={search}
-                                    onChange={(e) => {
-                                        setSearch(e.target.value)
-                                        setCurrentPage(1)
-                                    }}
-                                    className="pl-10"
-                                />
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                            <Input
+                                placeholder="Buscar por nombre o documento..."
+                                value={search}
+                                onChange={(e) => {
+                                    setSearch(e.target.value)
+                                    setCurrentPage(1)
+                                }}
+                                className="pl-10"
+                            />
                         </div>
                         <Select value={estadoFilter} onValueChange={(value) => {
                             setEstadoFilter(value)
                             setCurrentPage(1)
                         }}>
-                            <SelectTrigger className="w-full md:w-[200px]">
+                            <SelectTrigger>
                                 <SelectValue placeholder="Filtrar por estado" />
                             </SelectTrigger>
                             <SelectContent>
@@ -124,7 +178,38 @@ export function MilitantesTable() {
                                 <SelectItem value="suspendido">Suspendido</SelectItem>
                             </SelectContent>
                         </Select>
-                       
+                        <Select value={tipoFilter} onValueChange={(value) => {
+                            setTipoFilter(value)
+                            setCurrentPage(1)
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Filtrar por tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todos los tipos</SelectItem>
+                                {tiposMilitante.map((tipo) => (
+                                    <SelectItem key={tipo.id} value={tipo.id}>
+                                        {tipo.descripcion}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select value={coordinadorFilter} onValueChange={(value) => {
+                            setCoordinadorFilter(value)
+                            setCurrentPage(1)
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Filtrar por coordinador" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todos los coordinadores</SelectItem>
+                                {coordinadores.map((coord) => (
+                                    <SelectItem key={coord.id} value={coord.id}>
+                                        {coord.nombre || coord.email}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Tabla */}
@@ -142,7 +227,7 @@ export function MilitantesTable() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {loading ? (
+                                    {militantesLoading ? (
                                         <tr>
                                             <td colSpan={6} className="px-4 py-8 text-center">
                                                 <Loader2 className="h-6 w-6 animate-spin mx-auto" />
@@ -219,7 +304,7 @@ export function MilitantesTable() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                        disabled={currentPage === 1 || loading}
+                                        disabled={currentPage === 1 || militantesLoading}
                                     >
                                         <ChevronLeft className="h-4 w-4" />
                                     </Button>
@@ -230,7 +315,7 @@ export function MilitantesTable() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages || loading}
+                                        disabled={currentPage === totalPages || militantesLoading}
                                     >
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
