@@ -58,12 +58,26 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
                 control={form.control}
+                name="lugar_nacimiento"
+                render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                        <FormLabel>Lugar de Nacimiento</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Ej: Barranquilla" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+
+            <FormField
+                control={form.control}
                 name="direccion"
                 render={({ field }) => (
                     <FormItem className="md:col-span-2">
                         <FormLabel>Dirección de Residencia</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Cra 45 # 123 - 45" {...field} value={field.value || ""} />
+                            <Input placeholder="Ej: Cra 45 # 123 - 45" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -127,7 +141,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Localidad </FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: soledad" {...field} value={field.value || ""} />
+                                    <Input placeholder="Ej: soledad" {...field} value={field.value ?? ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -141,7 +155,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Barrio</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: Santa Bárbara" {...field} value={field.value || ""} />
+                                    <Input placeholder="Ej: Santa Bárbara" {...field} value={field.value ?? ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -226,24 +240,13 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
 
             <FormField
                 control={form.control}
-                name="zona_id"
+                name="ubicacion"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Zona</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione zona" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                {zonas.map((zona) => (
-                                    <SelectItem key={zona.id} value={zona.id}>
-                                        {zona.nombre}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <FormLabel>Ubicación (Código FRV etc)</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Ej: FRV" {...field} value={field.value ?? ""} />
+                        </FormControl>
                         <FormMessage />
                     </FormItem>
                 )}

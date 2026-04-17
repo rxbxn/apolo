@@ -24,7 +24,7 @@ export function ContactoSection({ form }: ContactoSectionProps) {
                     <FormItem>
                         <FormLabel>Correo Electrónico</FormLabel>
                         <FormControl>
-                            <Input type="email" placeholder="ejemplo@correo.com" {...field} value={field.value || ""} />
+                            <Input type="email" placeholder="ejemplo@correo.com" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -38,7 +38,21 @@ export function ContactoSection({ form }: ContactoSectionProps) {
                     <FormItem>
                         <FormLabel>Celular</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: 3001234567" {...field} value={field.value || ""} />
+                            <Input placeholder="Ej: 3001234567" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+
+            <FormField
+                control={form.control}
+                name="telefono"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Teléfono Alterno</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Ej: 3001234567" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -52,7 +66,7 @@ export function ContactoSection({ form }: ContactoSectionProps) {
                     <FormItem>
                         <FormLabel>Teléfono Fijo</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: 6011234567" {...field} value={field.value || ""} />
+                            <Input placeholder="Ej: 6011234567" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -66,7 +80,7 @@ export function ContactoSection({ form }: ContactoSectionProps) {
                     <FormItem>
                         <FormLabel>WhatsApp</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: 3001234567" {...field} value={field.value || ""} />
+                            <Input placeholder="Ej: 3001234567" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>

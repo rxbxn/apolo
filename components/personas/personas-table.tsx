@@ -23,8 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight, Shield, Edit3, Cloud } from "lucide-react"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { useConfirm } from "@/lib/hooks/use-confirm"
 import { usePersonas } from "@/lib/hooks/use-personas"
 import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
 import { useMilitantes } from '@/lib/hooks/use-militantes'
@@ -37,7 +35,6 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
 type Usuario = Database["public"]["Tables"]["usuarios"]["Row"] & {
   ciudades?: { nombre: string } | null
-  zonas?: { nombre: string } | null
 }
 
 const getStatusColor = (status: string) => {
@@ -61,9 +58,8 @@ const getRowColor = (status: string) => {
 export function PersonasTable() {
   const router = useRouter()
   const { listar, eliminar, loading: personasLoading, cambiarEstado, actualizar, obtenerPorId: obtenerUsuarioPorId } = usePersonas()
-  const { ciudades, zonas, loading: catalogosLoading } = useCatalogos()
-  const { permisos, loading: permisosLoading } = usePermisos("Módulo Personas")
-  const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
+  const { ciudades, loading: catalogosLoading } = useCatalogos()
+  const { permisos } = usePermisos("Módulo Personas")
 
   const [personas, setPersonas] = useState<Usuario[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -74,7 +70,7 @@ export function PersonasTable() {
   const [search, setSearch] = useState("")
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
   const [ciudadFilter, setCiudadFilter] = useState<string>("todos")
-  const [zonaFilter, setZonaFilter] = useState<string>("todos")
+  const [ubicacionFilter, setUbicacionFilter] = useState<string>("")
 
   // Estado para modal de permisos
   const [permisosModalOpen, setPermisosModalOpen] = useState(false)
@@ -113,12 +109,12 @@ export function PersonasTable() {
   const [obsValue, setObsValue] = useState("")
   const [obsUsuarioId, setObsUsuarioId] = useState<string | null>(null)
 
-  const pageSize = 5
+  const pageSize = 10
 
   useEffect(() => {
     cargarPersonas()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, search, estadoFilter, ciudadFilter, zonaFilter])
+  }, [currentPage, search, estadoFilter, ciudadFilter, ubicacionFilter])
 
   async function cargarPersonas() {
     try {
@@ -126,7 +122,7 @@ export function PersonasTable() {
       if (search) filtros.busqueda = search
       if (estadoFilter !== 'todos') filtros.estado = estadoFilter
       if (ciudadFilter !== 'todos') filtros.ciudad_id = ciudadFilter
-      if (zonaFilter !== 'todos') filtros.zona_id = zonaFilter
+      if (ubicacionFilter) filtros.ubicacion = ubicacionFilter
 
       const result = await listar(filtros, currentPage, pageSize)
       setPersonas(result.data)
@@ -149,16 +145,7 @@ export function PersonasTable() {
   }
 
   async function handleEliminar(id: string, nombre: string) {
-    const confirmed = await confirm({
-      title: "Eliminar Persona",
-      description: `¿Estás seguro de eliminar a ${nombre}? Esta acción no se puede deshacer y eliminará todos los datos asociados.`,
-      confirmText: "Eliminar",
-      cancelText: "Cancelar",
-      variant: "destructive"
-    })
-
-    if (!confirmed) return
-
+    if (!confirm(`¿Estás seguro de eliminar a ${nombre}?`)) return
     try {
       await eliminar(id)
       toast.success('Persona eliminada exitosamente')
@@ -170,22 +157,9 @@ export function PersonasTable() {
   }
 
 
-  const loading = personasLoading || catalogosLoading || permisosLoading
+  const loading = personasLoading || catalogosLoading
 
-  if (permisosLoading || !permisos) {
-    return (
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-8 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Verificando permisos...</span>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!permisos.leer) {
+  if (!permisos?.leer) {
     return (
       <Card className="border-0 shadow-sm">
         <CardContent className="p-8 text-center">
@@ -196,8 +170,7 @@ export function PersonasTable() {
   }
 
   return (
-    <>
-      <Dialog>
+    <Dialog>
       <div className="space-y-4">
         {/* Filtros */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -286,7 +259,7 @@ export function PersonasTable() {
                           Ciudad
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Zona
+                          Ubicación
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
                           Estado
@@ -338,7 +311,7 @@ export function PersonasTable() {
                             {persona.ciudades?.nombre || "-"}
                           </td>
                           <td className="px-6 py-4 text-sm text-foreground">
-                            {persona.zonas?.nombre || "-"}
+                            {persona.ubicacion || "-"}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
@@ -658,14 +631,17 @@ export function PersonasTable() {
                       </SelectContent>
                     </Select>
 
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Jefe de Debate</div>
-                    <Input value={militanteData.jefe_debate || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, jefe_debate: e.target.value }))} />
+                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Difusión</div>
+                    <Input value={militanteData.compromiso_difusion || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_difusion: e.target.value }))} />
 
                     <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Cautivo</div>
                     <Input value={militanteData.compromiso_cautivo || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_cautivo: e.target.value }))} />
 
                     <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Impacto</div>
                     <Input value={militanteData.compromiso_impacto || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_impacto: e.target.value }))} />
+
+                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Proyecto</div>
+                    <Input value={militanteData.compromiso_proyecto || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_proyecto: e.target.value }))} />
                   </div>
                 </div>
               )}
@@ -676,40 +652,34 @@ export function PersonasTable() {
               <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
                 try {
                   if (!militanteData) {
-                    toast.error('No hay datos de militante para actualizar')
+                    toast.error('No hay datos para guardar')
                     return
                   }
                   
-                  const usuarioId = militanteData.usuario_id
-                  if (!usuarioId) {
-                    console.error('militanteData sin usuario_id:', militanteData)
-                    toast.error('No se puede actualizar: falta el usuario_id del militante')
-                    return
-                  }
-                  
-                  console.log('🔄 Actualizando militante para usuario_id:', usuarioId)
-                  console.log('📋 Datos a enviar:', militanteData)
+                  // Use existing id if available, otherwise it's a create/upsert operation
+                  const id = militanteData.id || militanteData.militante_id || null
                   
                   const payload: any = {
-                    usuario_id: usuarioId, // ID del usuario para buscar el militante
+                    usuario_id: militanteData.usuario_id, // Essential for upsert logic
                     tipo: militanteData.tipo,
                     coordinador_id: militanteData.coordinador_id,
                     compromiso_cautivo: militanteData.compromiso_cautivo,
                     compromiso_impacto: militanteData.compromiso_impacto,
                     compromiso_marketing: militanteData.compromiso_marketing,
+                    compromiso_difusion: militanteData.compromiso_difusion,
+                    compromiso_proyecto: militanteData.compromiso_proyecto,
                     formulario: militanteData.formulario,
                     perfil_id: militanteData.perfil_id,
                     estado: militanteData.estado,
-                    jefe_debate: militanteData.jefe_debate,
                   }
-                  // El hook espera un ID como primer parámetro, usamos el usuario_id
-                  await actualizarMilitante(usuarioId, payload)
-                  toast.success('Militante actualizado')
+
+                  await actualizarMilitante(id, payload)
+                  toast.success(id ? 'Militante actualizado' : 'Militante creado')
                   setMilitanteModalOpen(false)
                   cargarPersonas()
-                } catch (e) {
-                  console.error('Error actualizando militante:', e)
-                  toast.error('Error actualizando militante')
+                } catch (e: any) {
+                  console.error('Error guardando militante:', e)
+                  toast.error(e.message || 'Error al guardar militante')
                 }
               }}>ACTUALIZAR</Button>
             </div>
@@ -748,20 +718,5 @@ export function PersonasTable() {
         </DialogContent>
       </Dialog>
     </Dialog>
-
-    {/* Modal de Confirmación */}
-    {config && (
-      <ConfirmDialog
-        open={isOpen}
-        onOpenChange={setIsOpen}
-        title={config.title}
-        description={config.description}
-        confirmText={config.confirmText}
-        cancelText={config.cancelText}
-        variant={config.variant}
-        onConfirm={handleConfirm}
-      />
-    )}
-  </>
   )
 }

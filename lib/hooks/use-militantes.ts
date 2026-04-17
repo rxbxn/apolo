@@ -6,70 +6,32 @@ import { supabase } from '@/lib/supabase/client'
 interface Militante {
     militante_id: string
     usuario_id: string
+    nombres: string
+    apellidos: string
+    numero_documento: string
+    tipo_documento: string
+    celular: string | null
+    usuario_email: string | null
     tipo: string
     coordinador_id: string | null
-    compromiso_marketing: number | null
-    compromiso_cautivo: number | null
-    compromiso_impacto: number | null
+    coordinador_email: string | null
+    coordinador_nombre: string | null
+    compromiso_marketing: string | null
+    compromiso_cautivo: string | null
+    compromiso_impacto: string | null
     formulario: string | null
+    perfil_id: string | null
+    perfil_nombre: string | null
+    ciudad_nombre: string | null
+    zona_nombre: string | null
     estado: string
     creado_en: string
     actualizado_en: string
-    
-    // Datos del usuario
-    nombres: string
-    apellidos: string
-    tipo_documento: string
-    numero_documento: string
-    email: string | null
-    celular: string | null
-    whatsapp: string | null
-    telefono_fijo: string | null
-    direccion: string | null
-    fecha_nacimiento: string | null
-    genero: string | null
-    estado_civil: string | null
-    
-    // Datos de ubicación
-    ciudad_id: string | null
-    ciudad_nombre: string | null
-    localidad_id: string | null
-    localidad_nombre: string | null
-    barrio_id: string | null
-    barrio_nombre: string | null
-    zona_id: string | null
-    zona_nombre: string | null
-    
-    // Datos demográficos
-    nivel_escolaridad: string | null
-    perfil_ocupacion: string | null
-    tipo_vivienda: string | null
-    estrato: string | null
-    ingresos_rango: string | null
-    tiene_hijos: boolean | null
-    numero_hijos: number | null
-    
-    // Redes sociales
-    facebook: string | null
-    instagram: string | null
-    twitter: string | null
-    linkedin: string | null
-    tiktok: string | null
-    
-    // Otros campos
-    observaciones: string | null
-    lider_responsable: string | null
-    
-    // Información del coordinador
-    coordinador_email: string | null
-    coordinador_nombre: string | null
 }
 
 interface FiltrosMilitantes {
     busqueda?: string
     estado?: string
-    tipo?: string
-    coordinador_id?: string
 }
 
 interface CrearMilitanteData {
@@ -80,6 +42,7 @@ interface CrearMilitanteData {
     compromiso_cautivo?: string
     compromiso_impacto?: string
     formulario?: string
+    perfil_id?: string
 }
 
 interface ActualizarMilitanteData {
@@ -89,6 +52,7 @@ interface ActualizarMilitanteData {
     compromiso_cautivo?: string
     compromiso_impacto?: string
     formulario?: string
+    perfil_id?: string
     estado?: string
 }
 
@@ -101,96 +65,35 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Usar la vista que ya incluye todos los joins
-            let query = supabase
-                .from('v_militantes_completo')
-                .select('*', { count: 'exact' })
+            // Usar la API route en lugar de consultar directamente
+            const params = new URLSearchParams({
+                page: page.toString(),
+                pageSize: pageSize.toString(),
+            })
 
-            // Aplicar filtros
             if (filtros.busqueda) {
-                query = query.or(`nombres.ilike.%${filtros.busqueda}%,apellidos.ilike.%${filtros.busqueda}%,numero_documento.ilike.%${filtros.busqueda}%`)
+                params.append('busqueda', filtros.busqueda)
             }
 
             if (filtros.estado) {
-                query = query.eq('estado', filtros.estado)
+                params.append('estado', filtros.estado)
             }
 
-            if (filtros.tipo) {
-                query = query.eq('tipo', filtros.tipo)
+            const response = await fetch(`/api/militante?${params.toString()}`)
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error al listar militantes')
             }
 
-            if (filtros.coordinador_id) {
-                query = query.eq('coordinador_id', filtros.coordinador_id)
-            }
-
-            // Paginación
-            const from = (page - 1) * pageSize
-            const to = from + pageSize - 1
-
-            const { data, error, count } = await query
-                .order('creado_en', { ascending: false })
-                .range(from, to)
-
-            if (error) throw error
-
-            // Transformar datos para mantener compatibilidad con la interfaz
-            const transformedData = (data || []).map(item => ({
-                militante_id: item.militante_id,
-                usuario_id: item.usuario_id,
-                tipo: item.tipo,
-                coordinador_id: item.coordinador_id,
-                compromiso_marketing: item.compromiso_marketing,
-                compromiso_cautivo: item.compromiso_cautivo,
-                compromiso_impacto: item.compromiso_impacto,
-                formulario: item.formulario,
-                estado: item.estado,
-                creado_en: item.creado_en,
-                actualizado_en: item.actualizado_en,
-                
-                // Datos del usuario
-                nombres: item.nombres,
-                apellidos: item.apellidos,
-                tipo_documento: item.tipo_documento,
-                numero_documento: item.numero_documento,
-                email: item.email,
-                celular: item.celular,
-                whatsapp: item.whatsapp,
-                telefono_fijo: item.telefono_fijo,
-                direccion: item.direccion,
-                fecha_nacimiento: item.fecha_nacimiento,
-                genero: item.genero,
-                estado_civil: item.estado_civil,
-                
-                // Datos de ubicación
-                ciudad_id: item.ciudad_id,
-                ciudad_nombre: item.ciudad_nombre,
-                zona_id: item.zona_id,
-                zona_nombre: item.zona_nombre,
-                
-                // Datos demográficos
-                nivel_escolaridad: item.nivel_escolaridad,
-                perfil_ocupacion: item.perfil_ocupacion,
-                tipo_vivienda: item.tipo_vivienda,
-                estrato: item.estrato,
-                ingresos_rango: item.ingresos_rango,
-                tiene_hijos: item.tiene_hijos,
-                numero_hijos: item.numero_hijos,
-                
-                // Datos del coordinador
-                coordinador_email: item.coordinador_email,
-                coordinador_nombre: item.coordinador_nombre,
-                
-                // Datos del tipo
-                tipo_descripcion: item.tipo_descripcion,
-                tipo_codigo: item.tipo_codigo
-            }))
+            const result = await response.json()
 
             return {
-                data: transformedData as Militante[],
-                count: count || 0,
-                page,
-                pageSize,
-                totalPages: Math.ceil((count || 0) / pageSize),
+                data: (result.data as Militante[]) || [],
+                count: result.count || 0,
+                page: result.page || page,
+                pageSize: result.pageSize || pageSize,
+                totalPages: result.totalPages || Math.ceil((result.count || 0) / pageSize),
             }
         } catch (err) {
             console.error('Error completo en listar militantes:', err)
@@ -313,90 +216,21 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Validaciones básicas
-            if (!militanteData.usuario_id || !militanteData.tipo) {
-                throw new Error('Faltan campos requeridos: usuario_id y tipo son obligatorios')
+            const response = await fetch('/api/militante', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(militanteData),
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error al crear militante')
             }
 
-            // Validar formato UUID
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            if (!uuidRegex.test(militanteData.usuario_id)) {
-                throw new Error(`usuario_id no tiene formato UUID válido: ${militanteData.usuario_id}`)
-            }
-
-            // Verificar que el usuario existe
-            const { data: usuario, error: usuarioError } = await supabase
-                .from('usuarios')
-                .select('id, nombres, apellidos')
-                .eq('id', militanteData.usuario_id)
-                .single()
-
-            if (usuarioError || !usuario) {
-                console.error(`❌ Usuario no encontrado. ID: ${militanteData.usuario_id}, Error:`, usuarioError)
-                throw new Error('Usuario no encontrado')
-            }
-
-            // Verificar coordinador si se proporciona
-            if (militanteData.coordinador_id) {
-                if (!uuidRegex.test(militanteData.coordinador_id)) {
-                    throw new Error(`coordinador_id no tiene formato UUID válido: ${militanteData.coordinador_id}`)
-                }
-
-                const { data: coordinador, error: coordError } = await supabase
-                    .from('coordinadores')
-                    .select('id')
-                    .eq('id', militanteData.coordinador_id)
-                    .single()
-
-                if (coordError || !coordinador) {
-                    throw new Error('Coordinador no encontrado')
-                }
-            }
-
-            // Crear militante
-            const insertPayload: any = {
-                usuario_id: militanteData.usuario_id,
-                tipo: militanteData.tipo,
-                compromiso_marketing: militanteData.compromiso_marketing ?? null,
-                compromiso_cautivo: militanteData.compromiso_cautivo ?? null,
-                compromiso_impacto: militanteData.compromiso_impacto ?? null,
-                formulario: militanteData.formulario ?? null,
-            }
-            if (militanteData.coordinador_id) insertPayload.coordinador_id = militanteData.coordinador_id
-
-            const { data: militanteCreated, error: militanteError } = await supabase
-                .from('militantes')
-                .insert(insertPayload)
-                .select()
-                .single()
-
-            if (militanteError) {
-                console.error('Error creando militante:', militanteError)
-                throw new Error(militanteError.message)
-            }
-
-            // Sincronizar compromisos en usuarios
-            try {
-                if (militanteData.usuario_id) {
-                    const { error: userUpdateErr } = await supabase
-                        .from('usuarios')
-                        .update({
-                            compromiso_marketing: militanteData.compromiso_marketing ?? null,
-                            compromiso_cautivo: militanteData.compromiso_cautivo ?? null,
-                            compromiso_impacto: militanteData.compromiso_impacto ?? null,
-                            formulario: militanteData.formulario ?? null,
-                        })
-                        .eq('id', militanteData.usuario_id)
-
-                    if (userUpdateErr) {
-                        console.warn('Warning syncing user compromiso fields:', userUpdateErr)
-                    }
-                }
-            } catch (syncError) {
-                console.warn('No se pudo sincronizar compromisos en usuarios:', syncError)
-            }
-
-            return { militante: militanteCreated, usuario }
+            const data = await response.json()
+            return data
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error desconocido')
             setError(error)
@@ -439,11 +273,7 @@ export function useMilitantes() {
             setLoading(true)
             setError(null)
 
-            // Usar cliente de Supabase directamente
-            const { error: deleteError } = await supabase
-                .from('militantes')
-                .delete()
-                .eq('id', id)
+            const { error: deleteError } = await supabase.from('militantes').delete().eq('id', id)
 
             if (deleteError) throw deleteError
 
@@ -497,4 +327,3 @@ export function useMilitantes() {
         error,
     }
 }
-

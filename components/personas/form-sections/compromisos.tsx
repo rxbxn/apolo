@@ -25,21 +25,12 @@ interface CompromisosSectionProps {
 }
 
 export function CompromisosSection({ form }: CompromisosSectionProps) {
-    const [options, setOptions] = useState<any[]>([])
 
-    useEffect(() => {
-        let mounted = true
-        fetch('/api/compromiso')
-            .then(r => r.json())
-            .then(d => { if (mounted) setOptions(d || []) })
-            .catch(() => { if (mounted) setOptions([]) })
-        return () => { mounted = false }
-    }, [])
 
     return (
         <div className="space-y-6">
             {/* Fila 1: Campos numéricos de compromisos */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 <FormField
                     control={form.control}
                     name="compromiso_marketing"
@@ -47,7 +38,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Marketing</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} value={field.value || 0} />
+                                <Input type="number" {...field} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -61,7 +52,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Cautivo</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} value={field.value || 0} />
+                                <Input type="number" {...field} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -75,7 +66,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                         <FormItem>
                             <FormLabel>Compromiso Impacto</FormLabel>
                             <FormControl>
-                                <Input type="number" {...field} value={field.value || 0} />
+                                <Input type="number" {...field} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -83,30 +74,33 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                 />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                 <FormField
                     control={form.control}
-                    name="compromiso_id"
+                    name="compromiso_difusion"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Compromiso</FormLabel>
+                            <FormLabel>Compromiso Difusión</FormLabel>
                             <FormControl>
-                                <Select onValueChange={field.onChange} value={field.value || ''}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleccione compromiso" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {options.map(o => (
-                                            <SelectItem key={o.id} value={String(o.id)}>{o.nombre}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <Input type="number" {...field} value={field.value ?? ""} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
-            </div>
+
+                <FormField
+                    control={form.control}
+                    name="compromiso_proyecto"
+                    render={({ field }) => (
+                        <FormItem className="md:col-span-1">
+                            <FormLabel>Compromiso Proyecto (Gestión, etc)</FormLabel>
+                            <FormControl>
+                                <Input placeholder="Ej: GESTION LABORAL" {...field} value={field.value ?? ""} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
             {/* Fila 3: Observaciones */}
             <FormField
@@ -120,6 +114,7 @@ export function CompromisosSection({ form }: CompromisosSectionProps) {
                                 placeholder="Ingrese cualquier observación relevante sobre la persona..."
                                 className="min-h-[120px]"
                                 {...field}
+                                value={field.value ?? ""}
                             />
                         </FormControl>
                         <FormMessage />

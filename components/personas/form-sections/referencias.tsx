@@ -41,67 +41,16 @@ interface ReferenciasSectionProps {
 }
 
 export function ReferenciasSection({ form }: ReferenciasSectionProps) {
-    const { tiposReferencia } = useCatalogos()
-    const { buscarReferentes } = usePersonas()
-    const [referencias, setReferencias] = useState<any[]>([])
-    const [loadingReferencias, setLoadingReferencias] = useState(false)
-    // Cargar referencias desde la tabla referencia
-    useEffect(() => {
-        let mounted = true
-        setLoadingReferencias(true)
-        fetch('/api/referencia')
-            .then(r => r.json())
-            .then(d => { if (mounted) setReferencias(d || []) })
-            .catch(() => { /* ignore */ })
-            .finally(() => { if (mounted) setLoadingReferencias(false) })
-        return () => { mounted = false }
-    }, [])
-    const [open, setOpen] = useState(false)
-    const [referentes, setReferentes] = useState<any[]>([])
-    const [loadingReferentes, setLoadingReferentes] = useState(false)
-    const [searchTerm, setSearchTerm] = useState("")
-
-    // Simple debounce effect
-    useEffect(() => {
-        const timer = setTimeout(async () => {
-            if (searchTerm.length >= 3) {
-                setLoadingReferentes(true)
-                const results = await buscarReferentes(searchTerm)
-                setReferentes(results)
-                setLoadingReferentes(false)
-            } else {
-                setReferentes([])
-            }
-        }, 500)
-
-        return () => clearTimeout(timer)
-    }, [searchTerm])
-
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
                 control={form.control}
-                name="referencia_id"
+                name="referencia_seleccion"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Referencia</FormLabel>
+                        <FormLabel>Referencia (Nombre o Sigla)</FormLabel>
                         <FormControl>
-                            <Select onValueChange={field.onChange} value={field.value || ''}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione referencia" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {loadingReferencias ? (
-                                        <div className="p-3 text-sm text-muted-foreground">Cargando...</div>
-                                    ) : referencias.length === 0 ? (
-                                        <div className="p-3 text-sm text-muted-foreground">No hay referencias</div>
-                                    ) : (
-                                        referencias.map(r => (
-                                            <SelectItem key={r.id} value={r.id}>{r.nombre}</SelectItem>
-                                        ))
-                                    )}
-                                </SelectContent>
-                            </Select>
+                            <Input placeholder="Ej: CALB" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -110,30 +59,17 @@ export function ReferenciasSection({ form }: ReferenciasSectionProps) {
 
             <FormField
                 control={form.control}
-                name="tipo_referencia_id"
+                name="telefono_referencia"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Tipo de Referencia</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione tipo" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                {tiposReferencia.map((tipo) => (
-                                    <SelectItem key={tipo.id} value={tipo.id}>
-                                        {tipo.nombre}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <FormLabel>Teléfono de Referencia</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Ej: 3001234567" {...field} value={field.value ?? ""} />
+                        </FormControl>
                         <FormMessage />
                     </FormItem>
                 )}
             />
-
-           
         </div>
     )
 }

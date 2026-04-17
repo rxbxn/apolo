@@ -146,15 +146,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const adminClient = createAdminClient()
-        console.log(`🔧 AdminClient creado:`, !!adminClient)
-        
         const body = await request.json()
 
-        console.log(`🚀 POST /api/militante - Datos recibidos:`, body)
-
-        let { usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id } = body
-
-        console.log(`🔍 usuario_id extraído: "${usuario_id}", tipo: "${tipo}"`)
+        let { usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, compromiso_difusion, compromiso_proyecto, formulario, perfil_id } = body
 
         // Validaciones básicas
         if (!usuario_id || !tipo) {
@@ -176,18 +170,13 @@ export async function POST(request: NextRequest) {
         if (coordinador_id === "") coordinador_id = null;
 
         // Verificar que el usuario existe
-        console.log(`🔍 POST /api/militante - Buscando usuario: ${usuario_id}`)
         const { data: usuario, error: usuarioError } = await (adminClient as any)
             .from('usuarios')
             .select('id, nombres, apellidos')
             .eq('id', usuario_id)
             .single()
 
-        console.log(`🔍 Usuario encontrado:`, usuario)
-        console.log(`🔍 Error de usuario:`, usuarioError)
-
         if (usuarioError || !usuario) {
-            console.error(`❌ Usuario no encontrado. ID: ${usuario_id}, Error:`, usuarioError)
             return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
         }
 
@@ -217,6 +206,8 @@ export async function POST(request: NextRequest) {
             compromiso_marketing: compromiso_marketing ?? null,
             compromiso_cautivo: compromiso_cautivo ?? null,
             compromiso_impacto: compromiso_impacto ?? null,
+            compromiso_difusion: compromiso_difusion ?? null,
+            compromiso_proyecto: compromiso_proyecto ?? null,
             formulario: formulario ?? null,
         }
         if (coordinador_id) insertPayload.coordinador_id = coordinador_id
@@ -225,17 +216,18 @@ export async function POST(request: NextRequest) {
         const { data: militanteInsertRes, error: militanteError } = await (adminClient as any)
             .from('militantes')
             .insert(insertPayload)
-        const militante = (militanteInsertRes && Array.isArray(militanteInsertRes) && militanteInsertRes[0]) ? militanteInsertRes[0] : null
+            .select() // Add select to get back the created record
+        const militante = (militanteInsertRes && Array.isArray(militanteInsertRes) && militanteInsertRes[0]) ? militanteInsertRes[0] : (militanteInsertRes || null)
 
         if (militanteError) {
             console.error('Error creando militante:', militanteError)
             return NextResponse.json({ error: militanteError.message }, { status: 500 })
         }
 
-        // Try to sync usuarios with compromiso fields. If this fails, remove the created militante (rollback)
+        // Try to sync usuarios with compromiso fields.
         try {
             if (usuario_id) {
-                const { data: userUpdate, error: userUpdateErr } = await (adminClient as any)
+                await (adminClient as any)
                     .from('usuarios')
                     .update({
                         compromiso_marketing: compromiso_marketing ?? null,
@@ -243,35 +235,13 @@ export async function POST(request: NextRequest) {
                         compromiso_impacto: compromiso_impacto ?? null,
                     })
                     .eq('id', usuario_id)
-
-                if (userUpdateErr) {
-                    // Rollback: delete the created militante
-                    try {
-                        if (militante && (militante as any).id) {
-                            await (adminClient as any).from('militantes').delete().eq('id', (militante as any).id)
-                        }
-                    } catch (delErr) {
-                        console.error('Error cleaning up militante after usuario sync failure:', delErr)
-                    }
-                    console.error('Error actualizando usuario tras crear militante:', userUpdateErr)
-                    return NextResponse.json({ error: 'Error sincronizando usuario tras crear militante' }, { status: 500 })
-                }
             }
         } catch (syncErr) {
-            // Attempt rollback
-                    try {
-                        if (militante && (militante as any).id) {
-                            await (adminClient as any).from('militantes').delete().eq('id', (militante as any).id)
-                        }
-                    } catch (delErr) {
-                        console.error('Error cleaning up militante after excepcion en sync:', delErr)
-                    }
             console.error('Exception synchronizing usuario after creating militante:', syncErr)
-            return NextResponse.json({ error: 'Error sincronizando usuario tras crear militante' }, { status: 500 })
+            // Not a breaking error for militante creation
         }
 
-    // Return minimal created id (detailed reads should use GET endpoints)
-    return NextResponse.json({ id: (militante as any)?.id || null }, { status: 201 })
+        return NextResponse.json(militante, { status: 201 })
     } catch (error: any) {
         console.error('Error en POST /api/militante:', error)
         return NextResponse.json({ error: `Error interno del servidor: ${error.message || error}` }, { status: 500 })
@@ -283,80 +253,105 @@ export async function PATCH(request: NextRequest) {
         const adminClient = createAdminClient()
         const body = await request.json()
 
-        const { id, usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, formulario, perfil_id, estado } = body
+        const { id, usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, compromiso_difusion, compromiso_proyecto, formulario, perfil_id, estado } = body
 
-        // El ID que recibimos es el usuario_id (tabla usuarios es la madre)
-        const targetUserId = usuario_id || id
-        
+        // Validate id (if provided)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-        if (!targetUserId || !uuidRegex.test(targetUserId)) {
-            return NextResponse.json({ error: 'usuario_id inválido' }, { status: 400 })
+        
+        // Try to find existing militant
+        let existingMilitante = null
+        let militanteId = id
+
+        if (militanteId && uuidRegex.test(militanteId)) {
+            const { data } = await (adminClient as any).from('militantes').select('*').eq('id', militanteId).single()
+            existingMilitante = data
         }
 
-        console.log(`🔍 Actualizando usuario: ${targetUserId}`)
-
-        // 1. PRIMERO: Actualizar la tabla USUARIOS (tabla madre)
-        const usuarioUpdatePayload: any = {}
-        if (compromiso_marketing !== undefined) usuarioUpdatePayload.compromiso_marketing = compromiso_marketing
-        if (compromiso_cautivo !== undefined) usuarioUpdatePayload.compromiso_cautivo = compromiso_cautivo
-        if (compromiso_impacto !== undefined) usuarioUpdatePayload.compromiso_impacto = compromiso_impacto
-
-        console.log(`🔄 Actualizando tabla usuarios con:`, usuarioUpdatePayload)
-
-        const { data: updatedUsuario, error: usuarioError } = await (adminClient as any)
-            .from('usuarios')
-            .update(usuarioUpdatePayload)
-            .eq('id', targetUserId)
-            .select()
-
-        if (usuarioError) {
-            console.error('Error actualizando usuario:', usuarioError)
-            return NextResponse.json({ error: 'Error actualizando usuario' }, { status: 500 })
+        // If not found by id, try by usuario_id
+        if (!existingMilitante && usuario_id && uuidRegex.test(usuario_id)) {
+            const { data } = await (adminClient as any).from('militantes').select('*').eq('usuario_id', usuario_id).single()
+            if (data) {
+                existingMilitante = data
+                militanteId = data.id
+            }
         }
 
-        // 2. SEGUNDO: Actualizar tabla MILITANTES si existe el registro
-        const { data: existingMilitante, error: findError } = await (adminClient as any)
-            .from('militantes')
-            .select('id, usuario_id')
-            .eq('usuario_id', targetUserId)
-            .single()
+        const updatePayload: any = {}
+        if (tipo !== undefined) updatePayload.tipo = tipo
+        if (coordinador_id !== undefined) updatePayload.coordinador_id = coordinador_id || null
+        if (compromiso_marketing !== undefined) updatePayload.compromiso_marketing = compromiso_marketing
+        if (compromiso_cautivo !== undefined) updatePayload.compromiso_cautivo = compromiso_cautivo
+        if (compromiso_impacto !== undefined) updatePayload.compromiso_impacto = compromiso_impacto
+        if (compromiso_difusion !== undefined) updatePayload.compromiso_difusion = compromiso_difusion
+        if (compromiso_proyecto !== undefined) updatePayload.compromiso_proyecto = compromiso_proyecto
+        if (formulario !== undefined) updatePayload.formulario = formulario
+        if (perfil_id !== undefined) updatePayload.perfil_id = perfil_id || null
+        if (estado !== undefined) updatePayload.estado = estado
 
-        if (!findError && existingMilitante) {
-            console.log(`✅ Militante encontrado, actualizando:`, existingMilitante.id)
-            
-            const militanteUpdatePayload: any = {}
-            if (tipo !== undefined) militanteUpdatePayload.tipo = tipo
-            if (coordinador_id !== undefined) militanteUpdatePayload.coordinador_id = coordinador_id || null
-            if (compromiso_marketing !== undefined) militanteUpdatePayload.compromiso_marketing = compromiso_marketing
-            if (compromiso_cautivo !== undefined) militanteUpdatePayload.compromiso_cautivo = compromiso_cautivo
-            if (compromiso_impacto !== undefined) militanteUpdatePayload.compromiso_impacto = compromiso_impacto
-            if (formulario !== undefined) militanteUpdatePayload.formulario = formulario
-            if (perfil_id !== undefined) militanteUpdatePayload.perfil_id = perfil_id || null
-            if (estado !== undefined) militanteUpdatePayload.estado = estado
+        let resultData = null
 
-            const { error: militanteError } = await (adminClient as any)
+        if (existingMilitante) {
+            // Update
+            const { data, error: updateErr } = await (adminClient as any)
                 .from('militantes')
-                .update(militanteUpdatePayload)
-                .eq('id', existingMilitante.id)
-
-            if (militanteError) {
-                console.error('Error actualizando militante:', militanteError)
+                .update(updatePayload)
+                .eq('id', militanteId)
+                .select()
+                .single()
+            
+            if (updateErr) {
+                console.error('Error actualizando militante:', updateErr)
                 return NextResponse.json({ error: 'Error actualizando militante' }, { status: 500 })
             }
+            resultData = data
         } else {
-            console.log(`ℹ️ No existe militante para usuario: ${targetUserId}`)
+            // Create (Upsert case)
+            if (!usuario_id || !tipo) {
+                return NextResponse.json({ error: 'Militante no encontrado y faltan datos para crear uno nuevo (usuario_id y tipo)' }, { status: 404 })
+            }
+            
+            const insertPayload = {
+                ...updatePayload,
+                usuario_id,
+                tipo: tipo || 'Sin tipo',
+                estado: estado || 'activo'
+            }
+            
+            const { data, error: insertErr } = await (adminClient as any)
+                .from('militantes')
+                .insert(insertPayload)
+                .select()
+                .single()
+
+            if (insertErr) {
+                console.error('Error creando militante en PATCH:', insertErr)
+                return NextResponse.json({ error: 'Error creando militante' }, { status: 500 })
+            }
+            resultData = data
         }
 
-        console.log(`✅ Actualización completada para usuario: ${targetUserId}`)
-        
-        return NextResponse.json({ 
-            success: true, 
-            message: 'Usuario y militante actualizados correctamente' 
-        })
+        // Sync usuario fields
+        try {
+            const finalUsuarioId = usuario_id || (resultData as any).usuario_id
+            if (finalUsuarioId) {
+                const { error: userUpdateErr } = await (adminClient as any).from('usuarios').update({
+                    compromiso_marketing: compromiso_marketing ?? (resultData as any).compromiso_marketing ?? null,
+                    compromiso_cautivo: compromiso_cautivo ?? (resultData as any).compromiso_cautivo ?? null,
+                    compromiso_impacto: compromiso_impacto ?? (resultData as any).compromiso_impacto ?? null,
+                }).eq('id', finalUsuarioId)
 
+                if (userUpdateErr) {
+                    console.error('Error sincronizando usuario tras salvar militante:', userUpdateErr)
+                    // We don't rollback here to avoid complex state, but we log the error
+                }
+            }
+        } catch (syncErr) {
+            console.error('Exception synchronizing usuario after saving militante:', syncErr)
+        }
+
+        return NextResponse.json(resultData)
     } catch (error: any) {
         console.error('Error en PATCH /api/militante:', error)
         return NextResponse.json({ error: `Error interno del servidor: ${error.message || error}` }, { status: 500 })
     }
 }
-

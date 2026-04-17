@@ -64,6 +64,7 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                             <Input 
                                 placeholder="Ej: Ingeniero, Estudiante..." 
                                 {...field} 
+                                value={field.value ?? ""}
                             />
                         </FormControl>
                         <FormMessage />
@@ -95,33 +96,7 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                 )}
             />
 
-            <FormField
-                control={form.control}
-                name="estrato"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Estrato</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione estrato" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                <SelectItem value="1">Estrato 1</SelectItem>
-                                <SelectItem value="2">Estrato 2</SelectItem>
-                                <SelectItem value="3">Estrato 3</SelectItem>
-                                <SelectItem value="4">Estrato 4</SelectItem>
-                                <SelectItem value="5">Estrato 5</SelectItem>
-                                <SelectItem value="6">Estrato 6</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
 
-           
 
             <div className="flex flex-col gap-4">
                 <FormField
@@ -155,6 +130,7 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                                         min="0" 
                                         placeholder="0"
                                         {...field}
+                                        value={field.value ?? ""}
                                     />
                                 </FormControl>
                                 <FormMessage />
