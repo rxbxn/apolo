@@ -48,6 +48,7 @@ const militanteSchema = z.object({
     usuario_id: z.string().min(1, "Debe seleccionar una persona"),
     tipo: z.string().min(1, "Debe seleccionar un tipo de militante"),
     coordinador_id: z.string().optional(),
+    dirigente_id: z.string().optional(),
     compromiso_marketing: numericString,
     compromiso_cautivo: numericString,
     compromiso_impacto: numericString,
@@ -97,6 +98,7 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
             usuario_id: "",
             tipo: "",
             coordinador_id: "",
+            dirigente_id: "",
             compromiso_marketing: null,
             compromiso_cautivo: null,
             compromiso_impacto: null,
@@ -126,26 +128,7 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
         cargarTipos()
     }, [listarTiposMilitante])
 
-    // Preload compromiso_* from usuarios when editing (prefer usuarios values)
-    useEffect(() => {
-        async function preloadCompromisos() {
-            try {
-                const uid = initialData?.usuario_id
-                if (!uid) return
-                const usuario = await obtenerPersonaPorId(uid)
-                if (!usuario) return
-
-                // setValue from react-hook-form
-                if (usuario.compromiso_marketing !== undefined && usuario.compromiso_marketing !== null) setValue('compromiso_marketing', usuario.compromiso_marketing)
-                if (usuario.compromiso_cautivo !== undefined && usuario.compromiso_cautivo !== null) setValue('compromiso_cautivo', usuario.compromiso_cautivo)
-                if (usuario.compromiso_impacto !== undefined && usuario.compromiso_impacto !== null) setValue('compromiso_impacto', usuario.compromiso_impacto)
-            } catch (e) {
-                // Error precargando compromisos - continuar sin mostrar error
-            }
-        }
-        preloadCompromisos()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialData?.usuario_id])
+    // coordinador_nombre viene en initialData desde el summary API — no necesita fetch adicional
 
     // Precargar datos cuando se selecciona una persona del dropdown
     useEffect(() => {
@@ -190,18 +173,22 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [usuario_id, tiposMilitante])
 
-    // Normalize initialData.tipo to UUID if necessary (codigo or descripcion -> id)
+    // Normalize initialData.tipo to UUID (codigo, descripcion o texto libre → id)
     useEffect(() => {
         if (!initialData?.tipo || tiposMilitante.length === 0) return
-        const t = initialData.tipo
-        const foundById = tiposMilitante.find(x => x.id === t)
-        if (foundById) return // already UUID
-        const foundByCodigo = tiposMilitante.find(x => String(x.codigo) === String(t))
-        if (foundByCodigo) setValue('tipo', foundByCodigo.id)
-        else {
-            const foundByDesc = tiposMilitante.find(x => String(x.descripcion) === String(t))
-            if (foundByDesc) setValue('tipo', foundByDesc.id)
-        }
+        const t = String(initialData.tipo).trim()
+        const tLow = t.toLowerCase()
+        // Ya es UUID → no hacer nada
+        if (tiposMilitante.find(x => x.id === t)) return
+        // Por codigo numérico
+        const byCodigo = tiposMilitante.find(x => String(x.codigo) === t)
+        if (byCodigo) { setValue('tipo', byCodigo.id); return }
+        // Por descripcion (case-insensitive)
+        const byDesc = tiposMilitante.find(x => String(x.descripcion).toLowerCase() === tLow)
+        if (byDesc) { setValue('tipo', byDesc.id); return }
+        // Por descripcion parcial (ej: "militante" ≈ "Militante base")
+        const byPartial = tiposMilitante.find(x => String(x.descripcion).toLowerCase().includes(tLow) || tLow.includes(String(x.descripcion).toLowerCase()))
+        if (byPartial) setValue('tipo', byPartial.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData?.tipo, tiposMilitante])
 
@@ -264,6 +251,7 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                 compromiso_cautivo: finalData.compromiso_cautivo != null ? String(finalData.compromiso_cautivo) : undefined,
                 compromiso_impacto: finalData.compromiso_impacto != null ? String(finalData.compromiso_impacto) : undefined,
                 formulario: finalData.formulario != null ? String(finalData.formulario) : undefined,
+                dirigente_id: finalData.dirigente_id || null,
             }
 
             if (isEditing && initialData?.id) {
@@ -411,6 +399,7 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                                 <Label className="text-muted-foreground font-normal">Tipo Militante</Label>
                                 <Select
                                     onValueChange={(value) => setValue("tipo", value)}
+                                    value={watch("tipo") || ""}
                                     defaultValue={initialData?.tipo || ""}
                                 >
                                     <SelectTrigger className="w-full border-x-0 border-t-0 border-b rounded-none px-0 shadow-none focus:ring-0">
@@ -440,7 +429,12 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                                         >
                                             <span className={cn("text-base", !coordinador_id && "text-muted-foreground")}>
                                                 {coordinador_id
-                                                    ? (coordinadores.find(c => c.coordinador_id === coordinador_id)?.nombres + ' ' + coordinadores.find(c => c.coordinador_id === coordinador_id)?.apellidos || "Coordinador seleccionado")
+                                                    ? (() => {
+                                                        const found = coordinadores.find(c => c.coordinador_id === coordinador_id)
+                                                        if (found && found.nombres) return `${found.nombres} ${found.apellidos}`
+                                                        if (initialData?.coordinador_nombre) return initialData.coordinador_nombre
+                                                        return "Coordinador seleccionado"
+                                                      })()
                                                     : "[-- Seleccione el Coordinador--]"}
                                             </span>
                                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -514,17 +508,11 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
 
                             {/* Dirigente */}
                             <div className="space-y-2 pt-4">
-                                <Label htmlFor="perfil_id" className="text-muted-foreground font-normal text-xs">Dirigente</Label>
+                                <Label className="text-muted-foreground font-normal text-xs">Dirigente</Label>
                                 <Select
-                                    onValueChange={(coordinadorId) => {
-                                        if (coordinadorId === "none") {
-                                            setValue("perfil_id", "");
-                                        } else {
-                                            const selectedDirigente = dirigentes.find(d => d.coordinador_id === coordinadorId);
-                                            if (selectedDirigente) {
-                                                setValue("perfil_id", selectedDirigente.perfil_id);
-                                            }
-                                        }
+                                    value={watch("dirigente_id") || "none"}
+                                    onValueChange={(val) => {
+                                        setValue("dirigente_id", val === "none" ? "" : val)
                                     }}
                                 >
                                     <SelectTrigger className="w-full border-none px-0 shadow-none focus:ring-0 font-medium">
@@ -532,9 +520,15 @@ export function MilitanteForm({ initialData, isEditing = false }: MilitanteFormP
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="none">Sin dirigente asignado</SelectItem>
-                                        {dirigentes.map((dirigente) => (
-                                            <SelectItem key={dirigente.coordinador_id} value={dirigente.coordinador_id}>
-                                                {dirigente.nombres} {dirigente.apellidos}
+                                        {/* Si hay un dirigente asignado que aún no está en la lista cargada, mostrarlo */}
+                                        {initialData?.dirigente_id && !dirigentes.find((d: any) => d.coordinador_id === initialData.dirigente_id) && (
+                                            <SelectItem value={initialData.dirigente_id}>
+                                                {initialData.dirigente_nombre || 'Dirigente asignado'}
+                                            </SelectItem>
+                                        )}
+                                        {dirigentes.map((d: any) => (
+                                            <SelectItem key={d.coordinador_id} value={d.coordinador_id}>
+                                                {d.nombres} {d.apellidos}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

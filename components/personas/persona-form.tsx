@@ -59,6 +59,7 @@ const personaSchema = z.object({
   nivel_escolaridad: z.string().optional(),
   perfil_ocupacion: z.string().optional(),
   tipo_vivienda: z.string().optional(),
+  talla_camisa: z.string().optional(),
   tiene_hijos: z.boolean().default(false),
   numero_hijos: z.coerce.number().optional(),
 
@@ -145,31 +146,41 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
         actualizado_por: usuarioActual?.id,
       }
 
-      // Campos solo frontend se pueden eliminar si no pertenecen a la BD
-      if (personaData.compromiso_difusion !== undefined) delete personaData.compromiso_difusion;
-      if (personaData.compromiso_proyecto !== undefined) delete personaData.compromiso_proyecto;
-      // Nota: compromiso_marketing etc. aún quedan en personaData, tal vez fallan en Supabase si no existen en usuarios,
-      // pero dejaremos que la BD las inserte si existen. Si no, habría q limpiarlas acá.
+      // Compromisos viven en la tabla militantes, NO en usuarios — eliminar antes de guardar
+      const compromisosMilitante = {
+        compromiso_marketing:  personaData.compromiso_marketing  ?? 0,
+        compromiso_cautivo:    personaData.compromiso_cautivo    ?? 0,
+        compromiso_impacto:    personaData.compromiso_impacto    ?? 0,
+        compromiso_difusion:   personaData.compromiso_difusion   ?? 0,
+        compromiso_proyecto:   personaData.compromiso_proyecto   ?? "",
+      }
+      delete personaData.compromiso_marketing
+      delete personaData.compromiso_cautivo
+      delete personaData.compromiso_impacto
+      delete personaData.compromiso_difusion
+      delete personaData.compromiso_proyecto
+      // tiene_hijos no es columna de DB — es solo UI
+      delete personaData.tiene_hijos
 
       if (isEditing && initialData?.id) {
         await actualizar(initialData.id, personaData as any)
         toast.success("Persona actualizada correctamente")
         // After updating usuario, try to sync militante commitments if militante exists
+        // Sincronizar compromisos en militantes
         try {
           const milRes = await fetch(`/api/militante/summary/${initialData.id}`)
           if (milRes.ok) {
             const mil = await milRes.json()
             if (mil) {
-              // Send PATCH to ensure militante row is synced from usuario
               await fetch('/api/militante', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: mil.id || mil.militante_id, compromiso_marketing: data.compromiso_marketing, compromiso_cautivo: data.compromiso_cautivo, compromiso_impacto: data.compromiso_impacto, compromiso_difusion: data.compromiso_difusion, compromiso_proyecto: data.compromiso_proyecto }),
+                body: JSON.stringify({ id: mil.id || mil.militante_id, ...compromisosMilitante }),
               })
             }
           }
         } catch (e) {
-          console.debug('No se pudo sincronizar militante tras actualizar usuario:', e)
+          console.debug('No se pudo sincronizar militante:', e)
         }
       } else {
         await crear({
@@ -178,22 +189,6 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
           estado: data.estado || 'activo',
         } as any)
         toast.success("Persona creada correctamente")
-        // When creating persona, we might also want to sync militante if exists - try
-        try {
-          const milRes = await fetch(`/api/militante/summary/${initialData?.id}`)
-          if (milRes.ok) {
-            const mil = await milRes.json()
-            if (mil) {
-              await fetch('/api/militante', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: mil.id || mil.militante_id, compromiso_marketing: data.compromiso_marketing, compromiso_cautivo: data.compromiso_cautivo, compromiso_impacto: data.compromiso_impacto, compromiso_difusion: data.compromiso_difusion, compromiso_proyecto: data.compromiso_proyecto }),
-              })
-            }
-          }
-        } catch (e) {
-          console.debug('No se pudo sincronizar militante tras crear usuario:', e)
-        }
       }
 
       router.push("/dashboard/personas")

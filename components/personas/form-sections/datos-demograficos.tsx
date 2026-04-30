@@ -96,7 +96,32 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                 )}
             />
 
-
+            <FormField
+                control={form.control}
+                name="talla_camisa"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Talla de Camisa</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione talla" />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value="XS">XS</SelectItem>
+                                <SelectItem value="S">S</SelectItem>
+                                <SelectItem value="M">M</SelectItem>
+                                <SelectItem value="L">L</SelectItem>
+                                <SelectItem value="XL">XL</SelectItem>
+                                <SelectItem value="XXL">XXL</SelectItem>
+                                <SelectItem value="XXXL">XXXL</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
 
             <div className="flex flex-col gap-4">
                 <FormField
@@ -106,7 +131,7 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                         <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                             <FormControl>
                                 <Checkbox
-                                    checked={field.value}
+                                    checked={field.value || (form.getValues("numero_hijos") ?? 0) > 0}
                                     onCheckedChange={field.onChange}
                                 />
                             </FormControl>
@@ -117,7 +142,7 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                     )}
                 />
 
-                {form.watch("tiene_hijos") && (
+                {(form.watch("tiene_hijos") || (form.watch("numero_hijos") ?? 0) > 0) && (
                     <FormField
                         control={form.control}
                         name="numero_hijos"
@@ -125,9 +150,9 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                             <FormItem>
                                 <FormLabel>Número de Hijos</FormLabel>
                                 <FormControl>
-                                    <Input 
-                                        type="number" 
-                                        min="0" 
+                                    <Input
+                                        type="number"
+                                        min="0"
                                         placeholder="0"
                                         {...field}
                                         value={field.value ?? ""}

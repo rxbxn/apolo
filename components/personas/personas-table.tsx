@@ -23,19 +23,30 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight, Shield, Edit3, Cloud } from "lucide-react"
-import { usePersonas } from "@/lib/hooks/use-personas"
+import { usePersonas, type PersonaEnriquecida } from "@/lib/hooks/use-personas"
 import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
 import { useMilitantes } from '@/lib/hooks/use-militantes'
 import { useCatalogos } from "@/lib/hooks/use-catalogos"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { toast } from "sonner"
-import type { Database } from "@/lib/supabase/database.types"
 import { PermisosModal } from "./permisos-modal"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
-type Usuario = Database["public"]["Tables"]["usuarios"]["Row"] & {
-  ciudades?: { nombre: string } | null
+// Badge de color por tipo de rol
+const TIPO_COLORS: Record<string, string> = {
+    "Coordinador Municipal": "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+    "Coordinador Local":     "bg-blue-100   text-blue-800   dark:bg-blue-900   dark:text-blue-200",
+    "Coordinador de Zona":   "bg-cyan-100   text-cyan-800   dark:bg-cyan-900   dark:text-cyan-200",
+    "Dirigente":             "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+    "Militante":             "bg-gray-100   text-gray-700   dark:bg-gray-800   dark:text-gray-300",
 }
+function TipoBadge({ nombre }: { nombre: string | null | undefined }) {
+    const label  = nombre ?? "Militante"
+    const colors = TIPO_COLORS[label] ?? TIPO_COLORS["Militante"]
+    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}>{label}</span>
+}
+
+type Usuario = PersonaEnriquecida
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
@@ -70,6 +81,7 @@ export function PersonasTable() {
   const [search, setSearch] = useState("")
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
   const [ciudadFilter, setCiudadFilter] = useState<string>("todos")
+  const [tipoFilter, setTipoFilter] = useState<string>("todos")
   const [ubicacionFilter, setUbicacionFilter] = useState<string>("")
 
   // Estado para modal de permisos
@@ -114,7 +126,7 @@ export function PersonasTable() {
   useEffect(() => {
     cargarPersonas()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, search, estadoFilter, ciudadFilter, ubicacionFilter])
+  }, [currentPage, search, estadoFilter, ciudadFilter, tipoFilter, ubicacionFilter])
 
   async function cargarPersonas() {
     try {
@@ -122,7 +134,7 @@ export function PersonasTable() {
       if (search) filtros.busqueda = search
       if (estadoFilter !== 'todos') filtros.estado = estadoFilter
       if (ciudadFilter !== 'todos') filtros.ciudad_id = ciudadFilter
-      if (ubicacionFilter) filtros.ubicacion = ubicacionFilter
+      if (tipoFilter   !== 'todos') filtros.tipo_militante = tipoFilter
 
       const result = await listar(filtros, currentPage, pageSize)
       setPersonas(result.data)
@@ -224,6 +236,26 @@ export function PersonasTable() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select
+            value={tipoFilter}
+            onValueChange={(value) => {
+              setTipoFilter(value)
+              setCurrentPage(1)
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los tipos</SelectItem>
+              <SelectItem value="militante">Militante</SelectItem>
+              <SelectItem value="coordinador_zona">Coordinador de Zona</SelectItem>
+              <SelectItem value="dirigente">Dirigente</SelectItem>
+              <SelectItem value="coordinador_local">Coordinador Local</SelectItem>
+              <SelectItem value="coordinador_municipal">Coordinador Municipal</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Tabla */}
@@ -243,30 +275,15 @@ export function PersonasTable() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border bg-muted/50">
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Foto
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Documento
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Nombre
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Contacto
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Ciudad
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Ubicación
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Estado
-                        </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">
-                          Acciones
-                        </th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Foto</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Documento</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Nombre</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Tipo</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Coordinador</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Contacto</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Ciudad</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -300,18 +317,23 @@ export function PersonasTable() {
                               {persona.numero_documento}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-foreground">
+                          <td className="px-4 py-4 text-sm text-foreground font-medium">
                             {persona.nombres} {persona.apellidos}
                           </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">
+                          <td className="px-4 py-4">
+                            <TipoBadge nombre={persona._perfil_nombre} />
+                          </td>
+                          <td className="px-4 py-4 text-sm text-muted-foreground">
+                            {persona._coord_nombre
+                              ? <span className="text-foreground">{persona._coord_nombre}</span>
+                              : <span className="italic text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-4 text-sm text-muted-foreground">
                             <div>{persona.celular || "-"}</div>
                             <div className="text-xs">{persona.email || "-"}</div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-foreground">
-                            {persona.ciudades?.nombre || "-"}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-foreground">
-                            {persona.ubicacion || "-"}
+                          <td className="px-4 py-4 text-sm text-foreground">
+                            {(persona.ciudades as any)?.nombre || persona.ciudad_nombre || "-"}
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
@@ -390,9 +412,18 @@ export function PersonasTable() {
                                 size="icon"
                                 className="w-8 h-8 text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900"
                                 onClick={async () => {
+                                  // comp_proyecto ya viene en el objeto persona (select * de usuarios)
+                                  // Lo pre-cargamos de inmediato; los fetch async pueden sobreescribir si tienen más datos
+                                  const personaAny = persona as any
+                                  let usuarioRow: any = {
+                                    compromiso_marketing: personaAny.compromiso_marketing,
+                                    compromiso_cautivo:   personaAny.compromiso_cautivo,
+                                    compromiso_impacto:   personaAny.compromiso_impacto,
+                                    comp_proyecto:        personaAny.comp_proyecto ?? null,
+                                  }
                                   try {
-                                    console.log('🔍 Clicking Edit3 button for persona:', persona.id)
-                                    
+                                    console.log('🔍 Clicking Edit3 button para:', persona.id, '| comp_proyecto:', personaAny.comp_proyecto)
+
                                     // Fetch militante record by usuario_id using existing API
                                     const res = await fetch(`/api/militante/summary/${persona.id}`)
                                     let d: any = null
@@ -403,17 +434,18 @@ export function PersonasTable() {
                                       console.warn('⚠️ No militante summary found or API error')
                                     }
 
-                                    // Try to fetch usuario row to preload compromiso fields (usuarios wins over militantes)
-                                    let usuarioRow: any = null
+                                    // Precargar compromisos desde militantes enriquecidos (ya vienen en persona._militante)
                                     try {
                                       console.log('🔍 Fetching usuario for preload compromisos...')
                                       // Use direct API call instead of hook to avoid Supabase client issues
                                       const usuarioRes = await fetch(`/api/personas/${persona.id}`)
                                       if (usuarioRes.ok) {
-                                        usuarioRow = await usuarioRes.json()
-                                        console.log('✅ Usuario fetched via API:', usuarioRow)
+                                        const fetched = await usuarioRes.json()
+                                        // Merge: el fetch puede traer más datos; conservar comp_proyecto si el fetch lo trae
+                                        usuarioRow = { ...usuarioRow, ...fetched }
+                                        console.log('✅ Usuario fetched via API:', usuarioRow, '| comp_proyecto:', usuarioRow.comp_proyecto)
                                       } else {
-                                        console.warn('⚠️ Usuario API call failed:', usuarioRes.status)
+                                        console.warn('⚠️ Usuario API call failed:', usuarioRes.status, '— usando datos pre-cargados')
                                       }
                                     } catch (ue) {
                                       console.error('❌ Error fetching usuario for preload compromisos:', ue)
@@ -421,13 +453,14 @@ export function PersonasTable() {
                                     }
 
                                     if (d) {
-                                      // merge compromiso fields from usuario if present
+                                      // d = datos de militantes (fuente de verdad para compromisos)
+                                      // usuarioRow = datos de usuarios (fuente de verdad para comp_proyecto)
                                       const merged = { ...(d || {}) }
-                                      if (usuarioRow) {
-                                        if (usuarioRow.compromiso_marketing !== undefined && usuarioRow.compromiso_marketing !== null) merged.compromiso_marketing = usuarioRow.compromiso_marketing
-                                        if (usuarioRow.compromiso_cautivo !== undefined && usuarioRow.compromiso_cautivo !== null) merged.compromiso_cautivo = usuarioRow.compromiso_cautivo
-                                        if (usuarioRow.compromiso_impacto !== undefined && usuarioRow.compromiso_impacto !== null) merged.compromiso_impacto = usuarioRow.compromiso_impacto
-                                      }
+                                      const src = usuarioRow || (persona as any)
+                                      // comp_proyecto SOLO viene de usuarios, no de militantes
+                                      merged.comp_proyecto = src?.comp_proyecto != null ? String(src.comp_proyecto) : ''
+                                      // Los compromisos numéricos ya vienen correctos desde d (militantes)
+                                      // NO sobreescribir con usuarios que pueden tener valores desactualizados
 
                                       // Normalize tipo: API might return id, codigo or descripcion; prefer id from tiposMilitante
                                       if (merged.tipo && tiposMilitante.length > 0) {
@@ -447,13 +480,13 @@ export function PersonasTable() {
                                       setMilitanteData(merged)
                                       setMilitanteModalOpen(true)
                                     } else {
-                                      // No militante for this usuario - but still preload usuario compromiso fields into modal
+                                      // No militante — preload desde usuarioRow o persona (ya en memoria)
                                       const empty: any = { usuario_id: persona.id }
-                                      if (usuarioRow) {
-                                        empty.compromiso_marketing = usuarioRow.compromiso_marketing ?? null
-                                        empty.compromiso_cautivo = usuarioRow.compromiso_cautivo ?? null
-                                        empty.compromiso_impacto = usuarioRow.compromiso_impacto ?? null
-                                      }
+                                      const esrc = usuarioRow || (persona as any)
+                                      empty.compromiso_marketing = esrc?.compromiso_marketing != null ? String(esrc.compromiso_marketing) : ''
+                                      empty.compromiso_cautivo   = esrc?.compromiso_cautivo   != null ? String(esrc.compromiso_cautivo)   : ''
+                                      empty.compromiso_impacto   = esrc?.compromiso_impacto   != null ? String(esrc.compromiso_impacto)   : ''
+                                      empty.comp_proyecto        = esrc?.comp_proyecto        != null ? String(esrc.comp_proyecto)        : ''
 
                                       // default tipo to empty string
                                       empty.tipo = ''
@@ -470,6 +503,11 @@ export function PersonasTable() {
                                       tipo: '',
                                       error: 'Error cargando datos del militante'
                                     }
+                                    const fsrc = usuarioRow || (persona as any)
+                                    fallbackData.compromiso_marketing = fsrc?.compromiso_marketing != null ? String(fsrc.compromiso_marketing) : ''
+                                    fallbackData.compromiso_cautivo   = fsrc?.compromiso_cautivo   != null ? String(fsrc.compromiso_cautivo)   : ''
+                                    fallbackData.compromiso_impacto   = fsrc?.compromiso_impacto   != null ? String(fsrc.compromiso_impacto)   : ''
+                                    fallbackData.comp_proyecto        = fsrc?.comp_proyecto        != null ? String(fsrc.comp_proyecto)        : ''
                                     setMilitanteData(fallbackData)
                                     setMilitanteModalOpen(true)
                                     
@@ -599,49 +637,59 @@ export function PersonasTable() {
               {!militanteData ? (
                 <div className="text-sm text-muted-foreground">Este usuario no tiene registro de militancia.</div>
               ) : (
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <div className="mb-2 text-xs text-muted-foreground">Nombre</div>
-                    <Input value={`${militanteData.nombres || ''} ${militanteData.apellidos || ''}`.trim()} readOnly />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Número documento</div>
-                    <Input value={militanteData.numero_documento || ''} readOnly />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Coordinador</div>
-                    <Input value={militanteData.coordinador_nombre || militanteData.coordinador_id || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, coordinador_id: e.target.value }))} />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Marketing</div>
-                    <Input value={militanteData.compromiso_marketing || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_marketing: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Columna izquierda */}
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Nombre</div>
+                      <Input value={`${militanteData.nombres || ''} ${militanteData.apellidos || ''}`.trim()} readOnly className="bg-muted/40" />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Número documento</div>
+                      <Input value={militanteData.numero_documento || ''} readOnly className="bg-muted/40" />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Coordinador</div>
+                      <Input value={militanteData.coordinador_nombre || militanteData.coordinador_id || ''} readOnly className="bg-muted/40" />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Marketing</div>
+                      <Input type="number" value={militanteData.compromiso_marketing ?? ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_marketing: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Cautivo</div>
+                      <Input type="number" value={militanteData.compromiso_cautivo ?? ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_cautivo: e.target.value }))} />
+                    </div>
                   </div>
 
-                  <div>
-                    <div className="mb-2 text-xs text-muted-foreground">Formulario</div>
-                    <Input value={militanteData.formulario || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, formulario: e.target.value }))} />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Tipo Militante</div>
-                    <Select value={militanteData.tipo || 'sin_tipo'} onValueChange={(val) => setMilitanteData((s:any) => ({ ...s, tipo: val === 'sin_tipo' ? null : val }))}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Seleccione tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sin_tipo">Sin tipo</SelectItem>
-                        {tiposMilitante.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.codigo ? `${t.codigo} - ${t.descripcion}` : t.descripcion}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Difusión</div>
-                    <Input value={militanteData.compromiso_difusion || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_difusion: e.target.value }))} />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Cautivo</div>
-                    <Input value={militanteData.compromiso_cautivo || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_cautivo: e.target.value }))} />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Impacto</div>
-                    <Input value={militanteData.compromiso_impacto || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_impacto: e.target.value }))} />
-
-                    <div className="mt-4 mb-2 text-xs text-muted-foreground">Compromiso Proyecto</div>
-                    <Input value={militanteData.compromiso_proyecto || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_proyecto: e.target.value }))} />
+                  {/* Columna derecha */}
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Formulario</div>
+                      <Input value={militanteData.formulario || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, formulario: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Tipo Militante</div>
+                      <Select value={militanteData.tipo || 'sin_tipo'} onValueChange={(val) => setMilitanteData((s:any) => ({ ...s, tipo: val === 'sin_tipo' ? null : val }))}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Seleccione tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sin_tipo">Sin tipo</SelectItem>
+                          {tiposMilitante.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.codigo ? `${t.codigo} - ${t.descripcion}` : t.descripcion}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Impacto</div>
+                      <Input type="number" value={militanteData.compromiso_impacto ?? ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, compromiso_impacto: e.target.value }))} />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-muted-foreground font-medium">Proyecto</div>
+                      <Input value={militanteData.comp_proyecto || ''} onChange={(e) => setMilitanteData((s:any) => ({ ...s, comp_proyecto: e.target.value }))} placeholder="Ej: GESTIÓN LABORAL" />
+                    </div>
                   </div>
                 </div>
               )}
@@ -660,14 +708,13 @@ export function PersonasTable() {
                   const id = militanteData.id || militanteData.militante_id || null
                   
                   const payload: any = {
-                    usuario_id: militanteData.usuario_id, // Essential for upsert logic
+                    usuario_id: militanteData.usuario_id,
                     tipo: militanteData.tipo,
                     coordinador_id: militanteData.coordinador_id,
                     compromiso_cautivo: militanteData.compromiso_cautivo,
                     compromiso_impacto: militanteData.compromiso_impacto,
                     compromiso_marketing: militanteData.compromiso_marketing,
-                    compromiso_difusion: militanteData.compromiso_difusion,
-                    compromiso_proyecto: militanteData.compromiso_proyecto,
+                    comp_proyecto: militanteData.comp_proyecto,
                     formulario: militanteData.formulario,
                     perfil_id: militanteData.perfil_id,
                     estado: militanteData.estado,

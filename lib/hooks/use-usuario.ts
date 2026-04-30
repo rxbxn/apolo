@@ -48,9 +48,23 @@ export function useUsuario() {
                 } else {
                     setUsuario(usuarioData)
                 }
-            } catch (err) {
-                console.error('Error cargando usuario:', err)
-                setError(err instanceof Error ? err : new Error('Error desconocido'))
+            } catch (err: any) {
+                // Ignore empty throw object or PGRST116 (user not found)
+                if (err && typeof err === 'object') {
+                    const keys = Object.keys(err);
+                    const isPostgrestNoRows = err.code === 'PGRST116' || err.details?.includes('contains 0 rows');
+                    if (keys.length === 0 && !err.message && !isPostgrestNoRows) {
+                        setError(null);
+                    } else if (isPostgrestNoRows) {
+                        setError(null);
+                    } else {
+                        console.error('Error cargando usuario:', err.message || err);
+                        setError(err instanceof Error ? err : new Error(err.message || 'Error desconocido'));
+                    }
+                } else {
+                    console.error('Error cargando usuario:', err);
+                    setError(new Error(String(err)));
+                }
             } finally {
                 setLoading(false)
             }

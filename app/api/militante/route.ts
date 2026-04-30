@@ -4,14 +4,14 @@ import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
     try {
-        // Usar adminClient para evitar problemas con RLS
         const adminClient = createAdminClient()
-
         const { searchParams } = new URL(request.url)
-        const page = parseInt(searchParams.get('page') || '1')
-        const pageSize = parseInt(searchParams.get('pageSize') || '10')
-        const busqueda = searchParams.get('busqueda') || ''
-        const estado = searchParams.get('estado') || ''
+        const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+        const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '10'))
+        const busqueda = (searchParams.get('busqueda') || '').trim()
+        const estado = (searchParams.get('estado') || '').trim()
+        const tipo = (searchParams.get('tipo') || '').trim()
+        const coordinadorId = (searchParams.get('coordinador_id') || '').trim()
 
         // 1. Obtener los tipos de militante para mapeo
         const { data: tiposData, error: tiposError } = await (adminClient as any)
@@ -20,48 +20,164 @@ export async function GET(request: NextRequest) {
 
         if (tiposError) throw tiposError;
 
-        // Build maps by codigo and by id to handle cases where 'tipo' stores either the code or the UUID
-        const tiposMapByCodigo = new Map((tiposData || []).map((t: any) => [String(t.codigo), t.descripcion]));
-        const tiposMapById = new Map((tiposData || []).map((t: any) => [(t.id as string), t.descripcion]));
+        // Función auxiliar para traer todos los registros esquivando el límite de 1000
+        async function fetchAll(baseQuery: any) {
+            let result: any[] = []
+            let from = 0
+            const pageSize = 1000
+            while (true) {
+                const { data, error } = await baseQuery.range(from, from + pageSize - 1)
+                if (error) throw error
+                if (!data || data.length === 0) break
+                result = result.concat(data)
+                if (data.length < pageSize) break
+                from += pageSize
+            }
+            return result
+        }
 
-        // 2. Consultar militantes directamente (sin selects relacionales)
-        let tableQuery = (adminClient as any)
-            .from('militantes')
-            .select('*', { count: 'exact' })
+        // 2. Obtener coordinadores para excluir sus usuarios y evitar mostrar dirigentes/coordinadores
+        const coordQuery = (adminClient as any)
+            .from('coordinadores')
+            .select('usuario_id')
+            .not('usuario_id', 'is', null)
+
+        let coordinadoresData: any[] = []
+        try {
+            coordinadoresData = await fetchAll(coordQuery)
+        } catch (coordError: any) {
+            console.error('Error obteniendo coordinadores:', coordError)
+            return NextResponse.json({ error: coordError.message }, { status: 500 })
+        }
+
+        const coordinadorUsuarioIds = new Set((coordinadoresData || []).map((c: any) => c.usuario_id).filter(Boolean))
+
+        // 3. Consultar militantes existentes sin paginación para poder combinar con virtuales correctamente
+        let militantesQuery: any = (adminClient as any).from('militantes').select('*')
+        if (estado) militantesQuery = militantesQuery.eq('estado', estado)
+        if (tipo) militantesQuery = militantesQuery.eq('tipo', tipo)
+        if (coordinadorId) militantesQuery = militantesQuery.eq('coordinador_id', coordinadorId)
+        militantesQuery = militantesQuery.order('creado_en', { ascending: false })
+
+        let militantesData: any[] = []
+        try {
+            militantesData = await fetchAll(militantesQuery)
+        } catch (militantesError: any) {
+            console.error('Error listando militantes desde tabla:', militantesError)
+            return NextResponse.json({ error: militantesError.message }, { status: 500 })
+        }
+
+        // Todos los registros en militantes se muestran, incluyendo coordinadores/dirigentes
+        // (CLAUDE.md: "Coordinadores y dirigentes aparecen en ambas tablas: coordinadores Y militantes")
+        const militantesExistentes = (militantesData || []).map((m: any) => ({ ...m, is_virtual: false }))
+        const militanteUsuarioIds = new Set(militantesExistentes.map((m: any) => m.usuario_id).filter(Boolean))
+
+        // 4. Obtener usuarios activos que no tienen militante creado (virtuales)
+        // No excluir coordinadores: todos son militantes per CLAUDE.md
+        let usuariosQuery: any = (adminClient as any)
+            .from('usuarios')
+            .select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email, compromiso_marketing, compromiso_cautivo, compromiso_impacto, estado, creado_en, actualizado_en')
 
         if (estado) {
-            tableQuery = tableQuery.eq('estado', estado)
+            usuariosQuery = usuariosQuery.eq('estado', estado)
+        } else {
+            usuariosQuery = usuariosQuery.neq('estado', 'inactivo')
         }
 
-        // Paginación
-        const from = (page - 1) * pageSize
-        const to = from + pageSize - 1
-        tableQuery = tableQuery.range(from, to).order('creado_en', { ascending: false })
-
-        const { data, error: tableError, count } = await tableQuery
-
-        if (tableError) {
-            console.error('Error listando militantes desde tabla:', tableError)
-            return NextResponse.json({ error: tableError.message }, { status: 500 })
+        if (busqueda) {
+            usuariosQuery = usuariosQuery.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
         }
 
-        const militantes = data || []
+        let usuariosData: any[] = []
+        try {
+            usuariosData = await fetchAll(usuariosQuery)
+        } catch (usuariosError: any) {
+            console.error('Error obteniendo usuarios:', usuariosError)
+            return NextResponse.json({ error: usuariosError.message }, { status: 500 })
+        }
 
-        // 3. Recolectar ids para batch fetch
-        const usuarioIds = Array.from(new Set(militantes.map((m: any) => m.usuario_id).filter(Boolean)))
-        const perfilIds = Array.from(new Set(militantes.map((m: any) => m.perfil_id).filter(Boolean)))
-        const coordinadorIds = Array.from(new Set(militantes.map((m: any) => m.coordinador_id).filter(Boolean)))
+        // Construir mapa de usuarios para enriquecer militantes reales con nombres/docs
+        const usuariosMapEarly = new Map((usuariosData || []).map((u: any) => [u.id, u]))
 
-        // 4. Batch fetch related tables
+        // Virtuales: usuarios sin registro en militantes
+        const usuariosMilitantes = (usuariosData || []).filter((u: any) => {
+            return !militanteUsuarioIds.has(u.id) && !tipo && !coordinadorId
+        })
+
+        const virtualMilitantes = usuariosMilitantes.map((u: any) => ({
+            id: `virtual-${u.id}`,
+            usuario_id: u.id,
+            tipo: null,
+            coordinador_id: null,
+            compromiso_marketing: u.compromiso_marketing,
+            compromiso_cautivo: u.compromiso_cautivo,
+            compromiso_impacto: u.compromiso_impacto,
+            formulario: null,
+            perfil_id: null,
+            estado: u.estado || 'activo',
+            creado_en: u.creado_en,
+            actualizado_en: u.actualizado_en,
+            is_virtual: true,
+            nombres: u.nombres,
+            apellidos: u.apellidos,
+            numero_documento: u.numero_documento,
+            tipo_documento: u.tipo_documento,
+            celular: u.celular,
+            usuario_email: u.email,
+        }))
+
+        // Enriquecer militantes reales con datos de usuario para poder buscar correctamente
+        // Los campos nombres/apellidos/numero_documento no existen en la tabla militantes
+        const militantesEnriquecidos = militantesExistentes.map((m: any) => {
+            const u = usuariosMapEarly.get(m.usuario_id)
+            if (u) {
+                return {
+                    ...m,
+                    nombres: u.nombres,
+                    apellidos: u.apellidos,
+                    numero_documento: u.numero_documento,
+                    tipo_documento: u.tipo_documento,
+                    celular: u.celular,
+                    usuario_email: u.email,
+                }
+            }
+            return m
+        })
+
+        // 5. Combinar y ordenar
+        let allMilitantes = [...militantesEnriquecidos, ...virtualMilitantes]
+        allMilitantes.sort((a: any, b: any) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
+
+        // Si hay búsqueda, aplicar a los registros combinados (ahora con nombres enriquecidos)
+        const filteredMilitantes = busqueda
+            ? allMilitantes.filter((m: any) => {
+                const q = busqueda.toLowerCase()
+                const nombres = (m.nombres || '').toLowerCase()
+                const apellidos = (m.apellidos || '').toLowerCase()
+                const numeroDocumento = (m.numero_documento || '').toLowerCase()
+                return nombres.includes(q) || apellidos.includes(q) || numeroDocumento.includes(q)
+            })
+            : allMilitantes
+
+        const totalCount = filteredMilitantes.length
+        const pagFrom = (page - 1) * pageSize
+        const pagTo = pagFrom + pageSize
+        const paginatedMilitantes = filteredMilitantes.slice(pagFrom, pagTo)
+
+        // 6. Recolectar ids para batch fetch (only for non-virtual militantes)
+        const nonVirtualMilitantes = paginatedMilitantes.filter((m: any) => !m.is_virtual)
+        const usuarioIds = Array.from(new Set(nonVirtualMilitantes.map((m: any) => m.usuario_id).filter(Boolean)))
+        const perfilIds = Array.from(new Set(paginatedMilitantes.map((m: any) => m.perfil_id).filter(Boolean)))
+        const coordinadorIds = Array.from(new Set(paginatedMilitantes.map((m: any) => m.coordinador_id).filter(Boolean)))
+
         const usuariosPromise = usuarioIds.length
-            ? (adminClient as any).from('usuarios').select('id, nombres, apellidos, numero_documento').in('id', usuarioIds)
+            ? (adminClient as any).from('usuarios').select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email').in('id', usuarioIds)
             : Promise.resolve({ data: [] })
 
         const perfilesPromise = perfilIds.length
             ? (adminClient as any).from('perfiles').select('id, nombre').in('id', perfilIds)
             : Promise.resolve({ data: [] })
 
-        // For coordinadores we fetch coordinadores then their usuarios
         const coordinadoresPromise = coordinadorIds.length
             ? (adminClient as any).from('coordinadores').select('id, usuario_id').in('id', coordinadorIds)
             : Promise.resolve({ data: [] })
@@ -74,24 +190,37 @@ export async function GET(request: NextRequest) {
 
         const usuariosMap = new Map((usuariosList || []).map((u: any) => [u.id, u]))
         const perfilesMap = new Map((perfilesList || []).map((p: any) => [p.id, p.nombre]))
+        const coordinadorToUsuarioMap = new Map((coordinadoresList || []).map((c: any) => [c.id, c.usuario_id]))
 
-        // Map coordinador.id -> usuario_id
         const coordUsuarioIds = Array.from(new Set((coordinadoresList || []).map((c: any) => c.usuario_id).filter(Boolean)))
         let coordUsuariosList: any[] = []
         if (coordUsuarioIds.length) {
-            const { data: cuData } = await (adminClient as any).from('usuarios').select('id, nombres, apellidos').in('id', coordUsuarioIds)
+            const { data: cuData, error: cuError } = await (adminClient as any)
+                .from('usuarios')
+                .select('id, nombres, apellidos')
+                .in('id', coordUsuarioIds)
+            if (cuError) {
+                console.error('Error fetching coordinador usuario details:', cuError)
+            }
             coordUsuariosList = cuData || []
         }
-        const coordUsuarioMap = new Map((coordUsuariosList || []).map((u: any) => [u.id, u]))
-        const coordinadorToUsuarioMap = new Map((coordinadoresList || []).map((c: any) => [c.id, c.usuario_id]))
 
-        // 5. Mapear resultados
-        const augmentedData = (militantes || []).map((m: any) => {
-            const usuarioAny: any = usuariosMap.get(m.usuario_id) || null
+        const coordUsuarioMap = new Map((coordUsuariosList || []).map((u: any) => [u.id, u]))
+
+        const augmentedData = paginatedMilitantes.map((m: any) => {
+            const usuarioAny: any = m.is_virtual ? {
+                nombres: m.nombres,
+                apellidos: m.apellidos,
+                numero_documento: m.numero_documento,
+                tipo_documento: m.tipo_documento,
+                celular: m.celular,
+                email: m.usuario_email,
+            } : usuariosMap.get(m.usuario_id) || null
+
             const perfilNombre = m.perfil_id ? perfilesMap.get(m.perfil_id) : null
-            const coordUsuarioId = coordinadorToUsuarioMap.get(m.coordinador_id)
+            const coordUsuarioId = m.coordinador_id ? coordinadorToUsuarioMap.get(m.coordinador_id) : null
             const coordUsuarioAny: any = coordUsuarioId ? coordUsuarioMap.get(coordUsuarioId) : null
-            // Resolve tipo by id or codigo
+
             const rawTipo = m.tipo
             let tipo_descripcion = null
             let tipo_codigo = null
@@ -109,12 +238,16 @@ export async function GET(request: NextRequest) {
                     tipo_codigo = String(m.tipo)
                 }
             }
+
             return {
                 ...m,
                 militante_id: m.id,
                 nombres: usuarioAny ? usuarioAny.nombres : null,
                 apellidos: usuarioAny ? usuarioAny.apellidos : null,
                 numero_documento: usuarioAny ? usuarioAny.numero_documento : null,
+                tipo_documento: usuarioAny ? usuarioAny.tipo_documento : null,
+                celular: usuarioAny ? usuarioAny.celular : null,
+                usuario_email: usuarioAny ? usuarioAny.email : null,
                 coordinador_nombre: coordUsuarioAny ? `${coordUsuarioAny.nombres} ${coordUsuarioAny.apellidos}` : null,
                 perfil_nombre: perfilNombre || null,
                 tipo_descripcion,
@@ -122,20 +255,12 @@ export async function GET(request: NextRequest) {
             }
         })
 
-        // Optional client-side filter by busqueda (search across nombres/apellidos/numero_documento)
-        const filtered = busqueda
-            ? augmentedData.filter((r: any) => {
-                const q = busqueda.toLowerCase()
-                return (r.nombres || '').toLowerCase().includes(q) || (r.apellidos || '').toLowerCase().includes(q) || (r.numero_documento || '').toLowerCase().includes(q)
-            })
-            : augmentedData
-
         return NextResponse.json({
-            data: filtered,
-            count,
+            data: augmentedData,
+            count: totalCount,
             page,
             pageSize,
-            totalPages: Math.ceil((count || 0) / pageSize),
+            totalPages: Math.ceil(totalCount / pageSize),
         })
     } catch (error: any) {
         console.error('Error en GET /api/militante:', error)
@@ -203,12 +328,12 @@ export async function POST(request: NextRequest) {
         const insertPayload: any = {
             usuario_id,
             tipo,
-            compromiso_marketing: compromiso_marketing ?? null,
-            compromiso_cautivo: compromiso_cautivo ?? null,
-            compromiso_impacto: compromiso_impacto ?? null,
-            compromiso_difusion: compromiso_difusion ?? null,
-            compromiso_proyecto: compromiso_proyecto ?? null,
-            formulario: formulario ?? null,
+            compromiso_marketing: compromiso_marketing === "" ? null : (compromiso_marketing ?? null),
+            compromiso_cautivo: compromiso_cautivo === "" ? null : (compromiso_cautivo ?? null),
+            compromiso_impacto: compromiso_impacto === "" ? null : (compromiso_impacto ?? null),
+            compromiso_difusion: compromiso_difusion === "" ? null : (compromiso_difusion ?? null),
+            compromiso_proyecto: compromiso_proyecto === "" ? null : (compromiso_proyecto ?? null),
+            formulario: formulario === "" ? null : (formulario ?? null),
         }
         if (coordinador_id) insertPayload.coordinador_id = coordinador_id
         if (perfil_id) insertPayload.perfil_id = perfil_id
@@ -230,9 +355,9 @@ export async function POST(request: NextRequest) {
                 await (adminClient as any)
                     .from('usuarios')
                     .update({
-                        compromiso_marketing: compromiso_marketing ?? null,
-                        compromiso_cautivo: compromiso_cautivo ?? null,
-                        compromiso_impacto: compromiso_impacto ?? null,
+                    compromiso_marketing: (compromiso_marketing === "" || compromiso_marketing == null) ? null : Number(compromiso_marketing),
+                    compromiso_cautivo: (compromiso_cautivo === "" || compromiso_cautivo == null) ? null : Number(compromiso_cautivo),
+                    compromiso_impacto: (compromiso_impacto === "" || compromiso_impacto == null) ? null : Number(compromiso_impacto),
                     })
                     .eq('id', usuario_id)
             }
@@ -253,7 +378,7 @@ export async function PATCH(request: NextRequest) {
         const adminClient = createAdminClient()
         const body = await request.json()
 
-        const { id, usuario_id, tipo, coordinador_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, compromiso_difusion, compromiso_proyecto, formulario, perfil_id, estado } = body
+        const { id, usuario_id, tipo, coordinador_id, dirigente_id, compromiso_marketing, compromiso_cautivo, compromiso_impacto, compromiso_difusion, compromiso_proyecto, formulario, perfil_id, estado } = body
 
         // Validate id (if provided)
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -279,12 +404,13 @@ export async function PATCH(request: NextRequest) {
         const updatePayload: any = {}
         if (tipo !== undefined) updatePayload.tipo = tipo
         if (coordinador_id !== undefined) updatePayload.coordinador_id = coordinador_id || null
-        if (compromiso_marketing !== undefined) updatePayload.compromiso_marketing = compromiso_marketing
-        if (compromiso_cautivo !== undefined) updatePayload.compromiso_cautivo = compromiso_cautivo
-        if (compromiso_impacto !== undefined) updatePayload.compromiso_impacto = compromiso_impacto
-        if (compromiso_difusion !== undefined) updatePayload.compromiso_difusion = compromiso_difusion
-        if (compromiso_proyecto !== undefined) updatePayload.compromiso_proyecto = compromiso_proyecto
-        if (formulario !== undefined) updatePayload.formulario = formulario
+        if (dirigente_id !== undefined) updatePayload.dirigente_id = dirigente_id || null
+        if (compromiso_marketing !== undefined) updatePayload.compromiso_marketing = compromiso_marketing === "" ? null : compromiso_marketing
+        if (compromiso_cautivo !== undefined) updatePayload.compromiso_cautivo = compromiso_cautivo === "" ? null : compromiso_cautivo
+        if (compromiso_impacto !== undefined) updatePayload.compromiso_impacto = compromiso_impacto === "" ? null : compromiso_impacto
+        if (compromiso_difusion !== undefined) updatePayload.compromiso_difusion = compromiso_difusion === "" ? null : compromiso_difusion
+        if (compromiso_proyecto !== undefined) updatePayload.compromiso_proyecto = compromiso_proyecto === "" ? null : compromiso_proyecto
+        if (formulario !== undefined) updatePayload.formulario = formulario === "" ? null : formulario
         if (perfil_id !== undefined) updatePayload.perfil_id = perfil_id || null
         if (estado !== undefined) updatePayload.estado = estado
 
@@ -335,9 +461,9 @@ export async function PATCH(request: NextRequest) {
             const finalUsuarioId = usuario_id || (resultData as any).usuario_id
             if (finalUsuarioId) {
                 const { error: userUpdateErr } = await (adminClient as any).from('usuarios').update({
-                    compromiso_marketing: compromiso_marketing ?? (resultData as any).compromiso_marketing ?? null,
-                    compromiso_cautivo: compromiso_cautivo ?? (resultData as any).compromiso_cautivo ?? null,
-                    compromiso_impacto: compromiso_impacto ?? (resultData as any).compromiso_impacto ?? null,
+                    compromiso_marketing: (compromiso_marketing === "" || compromiso_marketing == null) ? null : Number(compromiso_marketing),
+                    compromiso_cautivo: (compromiso_cautivo === "" || compromiso_cautivo == null) ? null : Number(compromiso_cautivo),
+                    compromiso_impacto: (compromiso_impacto === "" || compromiso_impacto == null) ? null : Number(compromiso_impacto),
                 }).eq('id', finalUsuarioId)
 
                 if (userUpdateErr) {

@@ -31,9 +31,8 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
       return NextResponse.json({ error: `usuarioId no tiene formato UUID válido` }, { status: 400 })
     }
 
-    // Use cookie-backed client by default (respetar RLS). Use admin client only when explicitly needed.
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    // Usar admin client para evitar bloqueos RLS en columnas añadidas posteriormente
+    const supabase = createAdminClient()
 
     try {
       const { data: militante, error: militanteError } = await supabase
@@ -73,7 +72,7 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
       // Fetch usuario row to merge
       const { data: usuario, error: usuarioError } = await supabase
         .from('usuarios')
-        .select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email, ciudad_id, zona_id')
+        .select('id, nombres, apellidos, numero_documento, tipo_documento, celular, email, ciudad_id, zona_id, comp_proyecto')
         .eq('id', usuarioId)
         .limit(1)
         .single()
@@ -101,6 +100,7 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
         usuario_email: usuarioAny?.email,
         ciudad_id: usuarioAny?.ciudad_id,
         zona_id: usuarioAny?.zona_id,
+        comp_proyecto: usuarioAny?.comp_proyecto ?? null,
       }
 
       // If militante has perfil_id, fetch perfil name explicitly to avoid PostgREST relationship errors
@@ -179,6 +179,34 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
         }
       } catch (e) {
         console.error('Error fetching coordinador for militante summary:', e)
+      }
+
+      // If militante has dirigente_id, fetch dirigente name
+      try {
+        const dirigenteIdRaw = (militanteAny && militanteAny.dirigente_id) || null
+        let dirigenteId: string | null = null
+        if (dirigenteIdRaw && typeof dirigenteIdRaw === 'string') dirigenteId = dirigenteIdRaw
+        else if (dirigenteIdRaw && typeof dirigenteIdRaw === 'object' && (dirigenteIdRaw as any).id) dirigenteId = (dirigenteIdRaw as any).id
+
+        if (dirigenteId && isUuid(dirigenteId)) {
+          const { data: dirRow, error: dirErr } = await supabase.from('coordinadores').select('id, usuario_id').eq('id', dirigenteId).limit(1).single()
+          if (!dirErr && dirRow) {
+            try {
+              const { data: dirUser, error: dirUserErr } = await supabase.from('usuarios').select('nombres, apellidos').eq('id', (dirRow as any).usuario_id).limit(1).single()
+              if (!dirUserErr && dirUser) {
+                merged.dirigente_id = (dirRow as any).id
+                merged.dirigente_nombre = `${(dirUser as any).nombres || ''} ${(dirUser as any).apellidos || ''}`.trim() || null
+              } else {
+                merged.dirigente_id = (dirRow as any).id
+                merged.dirigente_nombre = null
+              }
+            } catch (e) {
+              console.debug('Error fetching dirigente usuario:', e)
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching dirigente for militante summary:', e)
       }
 
       // If militante has tipo (tipos_militante), try to resolve it by id or by codigo

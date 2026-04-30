@@ -212,11 +212,14 @@ export function MilitantesTable() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="todos">Todos los coordinadores</SelectItem>
-                                {coordinadores.map((coord) => (
-                                    <SelectItem key={coord.id} value={coord.id}>
-                                        {coord.nombre || coord.email}
-                                    </SelectItem>
-                                ))}
+                                {coordinadores.map((coord, index) => {
+                                    const key = coord.id ?? coord.usuario_id ?? `${coord.nombre || ''}-${coord.email || ''}-${index}`
+                                    return (
+                                        <SelectItem key={key} value={coord.id ?? coord.usuario_id ?? ''}>
+                                            {coord.nombre || coord.email}
+                                        </SelectItem>
+                                    )
+                                })}
                             </SelectContent>
                         </Select>
                     </div>

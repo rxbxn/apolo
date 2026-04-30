@@ -618,20 +618,30 @@ export function useCoordinadores() {
             setLoading(true)
             setError(null)
 
-            // 1. Obtener el ID del perfil 'Dirigente'
-            const { data: perfilData, error: perfilError } = await supabase
+            // 1. Obtener el ID del perfil 'Dirigente' (case-insensitive)
+            const { data: perfilesList, error: perfilError } = await supabase
                 .from('perfiles')
-                .select('id')
-                .eq('nombre', 'Dirigente')
-                .single()
+                .select('id, nombre')
+                .ilike('nombre', 'dirigente')
 
-            if (perfilError || !perfilData) {
-                throw new Error("El perfil 'Dirigente' no fue encontrado.")
+            if (perfilError) {
+                console.warn('Error buscando perfil Dirigente:', perfilError)
             }
 
-            const dirigentePerfilId = (perfilData as any).id
+            const dirigentePerfilId = perfilesList && perfilesList.length > 0 ? (perfilesList[0] as any).id : null
 
-            // 2. Buscar todos los coordinadores con ese perfil
+            if (!dirigentePerfilId) {
+                console.warn("El perfil 'Dirigente' no fue encontrado en la tabla perfiles. Mostrando todos los coordinadores como opción.")
+                // Fallback: devolver todos los coordinadores (a los puede elegirse como dirigente)
+                const { data: allCoords, error: allErr } = await supabase
+                    .from('v_coordinadores_completo')
+                    .select('coordinador_id, nombres, apellidos, perfil_id')
+                    .limit(200)
+                if (allErr) { console.error('Error fallback dirigentes:', allErr); return [] }
+                return allCoords || []
+            }
+
+            // 2. Buscar todos los coordinadores con perfil Dirigente
             const { data, error: queryError } = await supabase
                 .from('v_coordinadores_completo')
                 .select('coordinador_id, nombres, apellidos, perfil_id')

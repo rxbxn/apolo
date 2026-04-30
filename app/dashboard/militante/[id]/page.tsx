@@ -20,48 +20,42 @@ export default function EditarMilitantePage() {
             try {
                 if (!id) return
                 let data: any = null
-                try {
-                    data = await obtenerPorId(id)
-                } catch (inner) {
-                    console.warn('obtenerPorId falló, intentando fallback API /api/militante/summary/:id', inner)
+                let usuarioId = id
+                
+                // Handle virtual IDs
+                if (id.startsWith('virtual-')) {
+                    usuarioId = id.replace('virtual-', '')
+                    // For virtual militantes, try to get data from summary API directly
                     try {
-                        const res = await fetch(`/api/militante/summary/${id}`)
+                        const res = await fetch(`/api/militante/summary/${usuarioId}`)
                         if (res.ok) data = await res.json()
-                        else data = null
                     } catch (fetchErr) {
-                        console.error('Fallback fetch a /api/militante/summary falló:', fetchErr)
-                        data = null
+                        console.error('Fetch for virtual militante failed:', fetchErr)
+                    }
+                } else {
+                    try {
+                        data = await obtenerPorId(id)
+                    } catch (inner) {
+                        console.warn('obtenerPorId falló, intentando fallback API /api/militante/summary/:id', inner)
+                        try {
+                            const res = await fetch(`/api/militante/summary/${id}`)
+                            if (res.ok) data = await res.json()
+                            else data = null
+                        } catch (fetchErr) {
+                            console.error('Fallback fetch a /api/militante/summary falló:', fetchErr)
+                            data = null
+                        }
                     }
                 }
                 // Mapear los datos de la vista al formato esperado por el formulario
                 // Prepare base payload
                 const base = data ? {
-                    id: data.militante_id || data.id,
-                    usuario_id: data.usuario_id,
-                    tipo: data.tipo,
-                    coordinador_id: data.coordinador_id,
-                    compromiso_marketing: data.compromiso_marketing,
-                    compromiso_cautivo: data.compromiso_cautivo,
-                    compromiso_impacto: data.compromiso_impacto,
-                    formulario: data.formulario,
-                    perfil_id: data.perfil_id,
+                    ...data,
+                    id: id.startsWith('virtual-') ? undefined : (data.militante_id || data.id),
+                    usuario_id: data.usuario_id || usuarioId,
                 } : null
 
-                // If usuario exists, fetch usuario to preload compromiso fields from usuarios table
-                if (data && data.usuario_id) {
-                    try {
-                        const usuario = await obtenerUsuario(data.usuario_id)
-                        if (usuario && base) {
-                            const u: any = usuario
-                            // Only overwrite if usuario has values (prefer usuario values as requested)
-                            base.compromiso_marketing = u.compromiso_marketing ?? base.compromiso_marketing
-                            base.compromiso_cautivo = u.compromiso_cautivo ?? base.compromiso_cautivo
-                            base.compromiso_impacto = u.compromiso_impacto ?? base.compromiso_impacto
-                        }
-                    } catch (e) {
-                        console.warn('No se pudo cargar usuario para precargar compromisos:', e)
-                    }
-                }
+                // Los compromisos vienen de militantes (data), no sobreescribir con usuarios
 
                 setMilitante(base)
             } catch (error) {

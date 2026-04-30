@@ -101,9 +101,9 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                     <FormItem>
                         <FormLabel>Fecha de Nacimiento</FormLabel>
                         <FormControl>
-                            <Input 
-                                type="date" 
-                                value={field.value || ""} 
+                            <Input
+                                type="date"
+                                value={field.value ? field.value.slice(0, 10) : ""}
                                 onChange={field.onChange}
                                 onBlur={field.onBlur}
                             />
@@ -118,11 +118,11 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                 name="fecha_registro"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel>Fecha de Registro</FormLabel>
+                        <FormLabel>Fecha de Ingreso</FormLabel>
                         <FormControl>
-                            <Input 
-                                type="date" 
-                                value={field.value || ""} 
+                            <Input
+                                type="date"
+                                value={field.value ? field.value.slice(0, 10) : ""}
                                 onChange={field.onChange}
                                 onBlur={field.onBlur}
                             />
@@ -145,8 +145,7 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                                 </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                                <SelectItem value="Activo">Activo</SelectItem>
-                                <SelectItem value="activo">activo (sistema)</SelectItem>
+                                <SelectItem value="activo">Activo</SelectItem>
                                 <SelectItem value="inactivo">Inactivo</SelectItem>
                                 <SelectItem value="suspendido">Suspendido</SelectItem>
                             </SelectContent>
