@@ -254,10 +254,6 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
        
-          <h2 className="text-2xl font-bold tracking-tight">
-            {isEditing ? "Editar Persona" : "Nueva Persona"}
-          </h2>
-
           {isEditing && initialData?.id ? (
             <FotoPerfilUpload
               usuarioId={initialData.id}
