@@ -123,6 +123,33 @@ export function DatosDemograficosSection({ form }: DatosDemograficosSectionProps
                 )}
             />
 
+            <FormField
+                control={form.control}
+                name="ideologia_politica"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Ideología Política</FormLabel>
+                        <Select
+                            onValueChange={(val) => field.onChange(val === "__none__" ? "" : val)}
+                            value={field.value || ""}
+                        >
+                            <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione ideología" />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value="__none__">— Sin especificar —</SelectItem>
+                                <SelectItem value="Izquierda">Izquierda</SelectItem>
+                                <SelectItem value="Centro">Centro</SelectItem>
+                                <SelectItem value="Derecha">Derecha</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+
             <div className="flex flex-col gap-4">
                 <FormField
                     control={form.control}

@@ -183,10 +183,14 @@ async function enriquecerFilas(adminClient: any, rows: any[]) {
 
     const coordNombres: Record<string, string> = {}
     if (coordIds.length > 0) {
-        const { data: cData } = await adminClient
+        const { data: cData, error: cError } = await adminClient
             .from('coordinadores')
-            .select('id, usuarios(nombres, apellidos)')
+            .select('id, usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
             .in('id', coordIds)
+
+        if (cError) {
+            console.error('Error resolviendo nombres de coordinador (embed ambiguo?):', cError)
+        }
         ;(cData ?? []).forEach((c: any) => {
             const u = c.usuarios
             if (u) coordNombres[c.id] = `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim()

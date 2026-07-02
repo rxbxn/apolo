@@ -74,7 +74,7 @@ export function VehiculoAmigoForm({ vehiculo, trigger }: VehiculoAmigoFormProps)
                 const supabase = createClient()
                 const { data } = await supabase
                     .from('coordinadores')
-                    .select('id, usuario:usuarios(nombres, apellidos)')
+                    .select('id, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
                 if (data) setCoordinadores(data)
             }
             fetchCoordinadores()

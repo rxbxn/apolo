@@ -423,6 +423,7 @@ export interface Database {
                     perfil_ocupacion: string | null
                     tipo_vivienda: string | null
                     talla_camisa: string | null
+                    ideologia_politica: string | null
                     facebook: string | null
                     twitter: string | null
                     instagram: string | null
@@ -477,6 +478,7 @@ export interface Database {
                     perfil_ocupacion?: string | null
                     tipo_vivienda?: string | null
                     talla_camisa?: string | null
+                    ideologia_politica?: string | null
                     facebook?: string | null
                     twitter?: string | null
                     instagram?: string | null
@@ -531,6 +533,7 @@ export interface Database {
                     perfil_ocupacion?: string | null
                     tipo_vivienda?: string | null
                     talla_camisa?: string | null
+                    ideologia_politica?: string | null
                     facebook?: string | null
                     twitter?: string | null
                     instagram?: string | null

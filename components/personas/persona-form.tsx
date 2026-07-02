@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation"
 import { usePersonas } from "@/lib/hooks/use-personas"
 import { useUsuario } from "@/lib/hooks/use-usuario"
 
+import { FotoPerfilUpload } from "./foto-perfil-upload"
 import { DatosPersonalesSection } from "./form-sections/datos-personales"
 import { UbicacionSection } from "./form-sections/ubicacion"
 import { ContactoSection } from "./form-sections/contacto"
@@ -60,6 +61,7 @@ const personaSchema = z.object({
   perfil_ocupacion: z.string().optional(),
   tipo_vivienda: z.string().optional(),
   talla_camisa: z.string().optional(),
+  ideologia_politica: z.union([z.enum(['Izquierda', 'Centro', 'Derecha']), z.literal(''), z.null()]).optional(),
   tiene_hijos: z.boolean().default(false),
   numero_hijos: z.coerce.number().optional(),
 
@@ -120,6 +122,7 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
       compromiso_marketing: 0,
       compromiso_difusion: 0,
       estado: "activo",
+      ideologia_politica: null,
     },
   })
 
@@ -161,6 +164,10 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
       delete personaData.compromiso_proyecto
       // tiene_hijos no es columna de DB — es solo UI
       delete personaData.tiene_hijos
+      // ideologia_politica: "" → null (la columna tiene CHECK constraint)
+      if (personaData.ideologia_politica === "" || personaData.ideologia_politica === "__none__") {
+        personaData.ideologia_politica = null
+      }
 
       if (isEditing && initialData?.id) {
         await actualizar(initialData.id, personaData as any)
@@ -250,6 +257,18 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
           <h2 className="text-2xl font-bold tracking-tight">
             {isEditing ? "Editar Persona" : "Nueva Persona"}
           </h2>
+
+          {isEditing && initialData?.id ? (
+            <FotoPerfilUpload
+              usuarioId={initialData.id}
+              fotoActual={initialData.foto_perfil_url}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground italic">
+              Podrás subir la foto después de guardar por primera vez.
+            </p>
+          )}
+
           <div className="flex gap-2 items-center">
             {form.watch('estado') === 'inactivo' && (
               <>

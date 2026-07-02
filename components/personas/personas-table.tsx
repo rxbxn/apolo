@@ -32,6 +32,18 @@ import { toast } from "sonner"
 import { PermisosModal } from "./permisos-modal"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
+// Badge de ideología política
+const IDEOLOGIA_COLORS: Record<string, string> = {
+    "Izquierda": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    "Centro":    "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200",
+    "Derecha":   "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+}
+function IdeologiaBadge({ valor }: { valor: string | null | undefined }) {
+    if (!valor) return <span className="text-xs text-muted-foreground italic">—</span>
+    const colors = IDEOLOGIA_COLORS[valor] ?? "bg-gray-100 text-gray-600"
+    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}>{valor}</span>
+}
+
 // Badge de color por tipo de rol
 const TIPO_COLORS: Record<string, string> = {
     "Coordinador Municipal": "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
@@ -282,6 +294,7 @@ export function PersonasTable() {
                         <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Coordinador</th>
                         <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Contacto</th>
                         <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Ciudad</th>
+                        <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Ideología</th>
                         <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
                         <th className="px-4 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
                       </tr>
@@ -334,6 +347,9 @@ export function PersonasTable() {
                           </td>
                           <td className="px-4 py-4 text-sm text-foreground">
                             {(persona.ciudades as any)?.nombre || persona.ciudad_nombre || "-"}
+                          </td>
+                          <td className="px-4 py-4">
+                            <IdeologiaBadge valor={(persona as any).ideologia_politica} />
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">

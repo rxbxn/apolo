@@ -79,7 +79,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                 const supabase = createClient()
                 const { data: coords } = await supabase
                     .from('coordinadores')
-                    .select('id, usuario:usuarios(nombres, apellidos)')
+                    .select('id, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
                 if (coords) setCoordinadores(coords)
             }
             fetchData()
