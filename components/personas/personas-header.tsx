@@ -6,89 +6,41 @@ import { Plus, Download, Upload, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { toast } from "sonner"
-import * as XLSX from 'xlsx'
-import { supabase } from "@/lib/supabase/client"
+import { ImportarPersonasDialog } from "./importar-personas-dialog"
 
 export function PersonasHeader() {
   const router = useRouter()
   const { permisos } = usePermisos("Módulo Personas")
   const [isExporting, setIsExporting] = useState(false)
 
+  // La exportación ahora vive en el servidor (/api/personas/exportar) y usa
+  // la MISMA estructura de columnas que espera "Importar" — el archivo es
+  // 100% redondeable (exportas, editas, vuelves a subir).
   const handleExport = async () => {
     try {
       setIsExporting(true)
       toast.info('Generando archivo de exportación...')
 
-      // 1. Obtener datos de usuarios
-      const { data: users, error: usersError } = await supabase
-        .from('usuarios')
-        .select('*')
-      
-      if (usersError) throw usersError
-
-      // 2. Obtener datos de militantes
-      const { data: miltants, error: militantsError } = await supabase
-        .from('militantes')
-        .select('*')
-      
-      if (militantsError) {
-        console.warn('Error fetching militants for export, proceeding with users only:', militantsError)
+      const res = await fetch('/api/personas/exportar')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Error generando la exportación')
       }
 
-      // Crear un mapa de militantes por usuario_id para un join eficiente
-      const militantMap = new Map()
-      if (miltants) {
-        miltants.forEach(m => {
-          militantMap.set(m.usuario_id, m)
-        })
-      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Personas_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
 
-      if (!users || users.length === 0) {
-        toast.error('No hay datos para exportar')
-        return
-      }
-
-      // 3. Mapear datos para el Excel
-      const exportData = users.map(u => {
-        const m = militantMap.get(u.id) || {}
-        return {
-          'Documento': u.numero_documento,
-          'Tipo Doc': u.tipo_documento,
-          'Nombres': u.nombres,
-          'Apellidos': u.apellidos,
-          'Celular': u.celular,
-          'Email': u.email,
-          'Ciudad': u.ciudad_nombre,
-          'Localidad': u.localidad_nombre,
-          'Barrio': u.barrio_nombre,
-          'Dirección': u.direccion,
-          'Estado': u.estado,
-          'Observaciones': u.observaciones,
-          'Tipo Militante': m.tipo || 'No militante',
-          'Compromiso Marketing': u.compromiso_marketing || m.compromiso_marketing || '',
-          'Compromiso Cautivo': u.compromiso_cautivo || m.compromiso_cautivo || '',
-          'Compromiso Impacto': u.compromiso_impacto || m.compromiso_impacto || '',
-          'Compromiso Difusión': m.compromiso_difusion || '',
-          'Compromiso Proyecto': m.compromiso_proyecto || '',
-          'Fecha Registro': u.fecha_registro || u.creado_en,
-          'Verificación Sticker': u.verificacion_sticker || '',
-          'Verificador': u.nombre_verificador || ''
-        }
-      })
-
-      // 4. Crear libro de Excel
-      const ws = XLSX.utils.json_to_sheet(exportData)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "Personas")
-
-      // 5. Descargar
-      XLSX.writeFile(wb, `Exportacion_Personas_${new Date().toISOString().split('T')[0]}.xlsx`)
       toast.success('Archivo exportado exitosamente')
-
     } catch (error: any) {
-      console.error('Error detallado exportando datos:', error)
-      const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error))
-      toast.error('Error al exportar datos: ' + (errorMsg === '{}' ? 'Error de conexión o permisos' : errorMsg))
+      console.error('Error exportando datos:', error)
+      toast.error('Error al exportar datos: ' + (error.message || 'Error desconocido'))
     } finally {
       setIsExporting(false)
     }
@@ -119,10 +71,14 @@ export function PersonasHeader() {
         )}
 
         {permisos?.importar && (
-          <Button variant="outline" size="sm">
-            <Upload className="w-4 h-4 mr-2" />
-            Importar
-          </Button>
+          <ImportarPersonasDialog
+            trigger={
+              <Button variant="outline" size="sm">
+                <Upload className="w-4 h-4 mr-2" />
+                Importar
+              </Button>
+            }
+          />
         )}
 
         {permisos?.crear && (
