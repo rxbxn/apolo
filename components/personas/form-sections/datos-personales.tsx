@@ -55,30 +55,16 @@ export function DatosPersonalesSection({ form }: DatosPersonalesSectionProps) {
                 )}
             />
 
-            <FormField
-                control={form.control}
-                name="tipo_documento"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>Tipo de Documento *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione tipo" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                <SelectItem value="Cédula">Cédula de Ciudadanía</SelectItem>
-                                <SelectItem value="Tarjeta de Identidad">Tarjeta de Identidad</SelectItem>
-                                <SelectItem value="Cédula de Extranjería">Cédula de Extranjería</SelectItem>
-                                <SelectItem value="Pasaporte">Pasaporte</SelectItem>
-                                <SelectItem value="Registro Civil">Registro Civil</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                )}
-            />
+            {/* El sistema solo maneja Cédula de Ciudadanía — no se aceptan otros
+                tipos de documento. Queda fijo (no editable); persona-form.tsx
+                también fuerza este valor al guardar, por si el registro traía
+                otro tipo de documento de antes de esta regla. */}
+            <FormItem>
+                <FormLabel>Tipo de Documento</FormLabel>
+                <FormControl>
+                    <Input value="Cédula de Ciudadanía" disabled readOnly />
+                </FormControl>
+            </FormItem>
 
             <FormField
                 control={form.control}

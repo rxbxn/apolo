@@ -145,6 +145,9 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
       // Preparar datos para enviar
       const personaData: any = {
         ...data,
+        // El sistema solo maneja Cédula de Ciudadanía — se fuerza siempre,
+        // incluso si el registro traía otro valor de antes de esta regla.
+        tipo_documento: "Cédula",
         // Campos de auditoría
         actualizado_por: usuarioActual?.id,
       }

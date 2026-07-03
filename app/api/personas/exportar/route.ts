@@ -44,7 +44,12 @@ export async function GET(request: NextRequest) {
                 'NOMBRE COMPLETO': `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim(),
                 'COORDINADOR': coordNombre,
                 'DIRIGENTE': dirigenteNombre,
-                'TIPO': m.tipo === 'militante' || !m.tipo ? '80001' : m.tipo,
+                // Fijo en 80001 (código de "Militante" del catálogo tipos_militante):
+                // este campo no distingue roles en la práctica (eso vive en las
+                // tablas coordinadores/dirigentes) y algunos registros viejos
+                // tienen basura ahí (un ID en vez del texto esperado) por un bug
+                // de datos anterior — no vale la pena mostrarla.
+                'TIPO': '80001',
                 'TALLA': u.talla_camisa ?? '',
                 'LUGAR NACIMIENTO': u.lugar_nacimiento ?? '',
                 'DIRECCIÓN': u.direccion ?? '',

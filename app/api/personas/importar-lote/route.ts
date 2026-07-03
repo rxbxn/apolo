@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
             if (coordNombre && !coordinadorId) avisos.push(`Fila ${filaNum} (${cedula}): coordinador "${coordNombre}" no encontrado, quedó sin asignar`)
             if (dirNombre && !dirigenteId) avisos.push(`Fila ${filaNum} (${cedula}): dirigente "${dirNombre}" no encontrado, quedó sin asignar`)
 
-            const tipoExcel = q(row['TIPO'])
+            const tipoExcel = (q(row['TIPO']) || '').toLowerCase()
             if (tipoExcel && tipoExcel !== '80001' && tipoExcel !== 'militante') {
                 avisos.push(`Fila ${filaNum} (${cedula}): TIPO=${tipoExcel} sugiere rol de coordinador/dirigente — gestionar manualmente en su módulo`)
             }
