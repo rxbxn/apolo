@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import {
-    q, qInt, qEmail, fixCedula, splitNombre,
+    q, qInt, qEmail, qFecha, fixCedula, splitNombre,
     normMap, GENERO_MAP, ESCOLARIDAD_MAP, VIVIENDA_MAP, ESTADO_MAP,
+    generarDocumentoPendiente, generarEmailPendiente,
 } from '@/lib/personas/import-utils'
 
 // POST /api/personas/importar-lote
@@ -38,12 +39,15 @@ export async function POST(request: NextRequest) {
 
         const adminClient = createAdminClient() as any
 
-        // ── Catálogos geográficos + coordinadores: una sola carga para todo el lote ──
-        const [{ data: ciudadesDb }, { data: localidadesDb }, { data: barriosDb }, { data: coordDb }] = await Promise.all([
+        // ── Catálogos geográficos + coordinadores + referencias + dirigentes: una sola carga para todo el lote ──
+        const [{ data: ciudadesDb }, { data: localidadesDb }, { data: barriosDb }, { data: coordDb }, { data: referenciaDb }, { data: dirigentesDb }, { data: usuariosRealesDb }] = await Promise.all([
             adminClient.from('ciudades').select('id, nombre'),
             adminClient.from('localidades').select('id, nombre, ciudad_id'),
             adminClient.from('barrios').select('id, nombre, ciudad_id, localidad_id'),
             adminClient.from('coordinadores').select('id, usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)'),
+            adminClient.from('referencia').select('id, nombre'),
+            adminClient.from('dirigentes').select('id_coordinador, id_dirigente'),
+            adminClient.from('usuarios').select('id, nombres, apellidos, email').not('numero_documento', 'like', 'PENDIENTE-%'),
         ])
         const ciudadMap = new Map<string, string>((ciudadesDb ?? []).map((c: any) => [c.nombre.toUpperCase(), c.id]))
         const localidadMap = new Map<string, string>((localidadesDb ?? []).map((l: any) => [`${l.nombre.toUpperCase()}|${l.ciudad_id}`, l.id]))
@@ -53,9 +57,137 @@ export async function POST(request: NextRequest) {
             const u = c.usuarios
             if (u) nombreToCoordId.set(`${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim().toUpperCase(), c.id)
         })
+        const referenciaMap = new Map<string, string>()
+        ;(referenciaDb ?? []).forEach((r: any) => {
+            if (r.nombre) referenciaMap.set(String(r.nombre).trim().toUpperCase(), r.id)
+        })
+        // Nombre completo (persona REAL, con cédula real, no placeholder) ->
+        // usuario_id. Sirve para reconocer cuando alguien mencionado como
+        // COORDINADOR/DIRIGENTE ya existe como militante con su propia fila
+        // en el Excel (pasa seguido) — en vez de inventarle una identidad
+        // PENDIENTE-* duplicada, se reutiliza su registro real.
+        const usuarioRealPorNombre = new Map<string, { id: string; email: string | null }>()
+        ;(usuariosRealesDb ?? []).forEach((u: any) => {
+            const key = `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim().toUpperCase()
+            if (key) usuarioRealPorNombre.set(key, { id: u.id, email: u.email ?? null })
+        })
+        // Tabla `dirigentes`: vínculo suelto (id_coordinador/id_dirigente son
+        // TEXT sin FK real) que registra qué coordinador reporta a qué
+        // dirigente. No tiene UNIQUE en la BD real, así que hay que evitar
+        // duplicados nosotros mismos — un mismo par puede repetirse en
+        // cientos de filas del Excel (un dirigente típicamente agrupa a
+        // muchos coordinadores).
+        const paresDirigentesExistentes = new Set<string>(
+            (dirigentesDb ?? []).map((d: any) => `${d.id_coordinador}|${d.id_dirigente}`)
+        )
+        const paresDirigentesNuevos: { id_coordinador: string; id_dirigente: string }[] = []
 
         const errores: { fila: number; cedula: string; error: string }[] = []
         const avisos: string[] = []
+
+        // ── Auto-crear coordinador/dirigente/referencia por nombre ──────────
+        // El Excel solo trae el NOMBRE de estas personas (nunca cédula/email:
+        // esos datos son del militante). Si el nombre no existe todavía, se
+        // crea un usuario + fila en `coordinadores` SIN cuenta de acceso
+        // (sin email/password reales) — el admin la activa después desde el
+        // módulo Coordinador o Gestión de Roles cuando tenga el dato real.
+        // "Coordinador" y "Dirigente" son el mismo tipo de registro en este
+        // sistema (militantes.coordinador_id y militantes.dirigente_id apuntan
+        // ambos, de forma independiente, a `coordinadores.id`; no hay
+        // jerarquía implícita entre las dos columnas de una misma fila).
+        async function resolverOCrearCoordinador(nombreOriginal: string): Promise<string | null> {
+            const nombreUpper = nombreOriginal.trim().toUpperCase()
+            if (!nombreUpper) return null
+            const existente = nombreToCoordId.get(nombreUpper)
+            if (existente) return existente
+
+            // ¿Ya existe una persona REAL (cédula real) con este nombre
+            // exacto? Ej. un dirigente que agrupa a 200 coordinadores
+            // normalmente también tiene su propia fila de militante en el
+            // mismo Excel — hay que reusar ese usuario, no duplicarlo.
+            const real = usuarioRealPorNombre.get(nombreUpper)
+
+            let usuarioId: string
+            let emailCoordinador: string
+
+            if (real) {
+                usuarioId = real.id
+                emailCoordinador = qEmail(real.email) || generarEmailPendiente(nombreUpper)
+                avisos.push(`"${nombreUpper}" ya existe como persona real en el sistema — se reusó su registro para el coordinador/dirigente en vez de crear uno duplicado.`)
+            } else {
+                const { nombres, apellidos } = splitNombre(nombreUpper)
+                const docPendiente = generarDocumentoPendiente()
+                const emailPendiente = generarEmailPendiente(nombreUpper)
+
+                const { data: nuevoUsuario, error: errUsuario } = await adminClient
+                    .from('usuarios')
+                    .insert({
+                        tipo_documento: 'CC',
+                        numero_documento: docPendiente,
+                        nombres: nombres || nombreUpper,
+                        apellidos: apellidos || '',
+                        email: emailPendiente,
+                        estado: 'activo',
+                        observaciones: 'Creado automáticamente desde import de Personas (solo se conocía el nombre) — completar cédula, email y datos reales en su módulo.',
+                    })
+                    .select('id')
+                    .single()
+
+                if (errUsuario || !nuevoUsuario) {
+                    avisos.push(`No se pudo crear coordinador/dirigente automático para "${nombreUpper}": ${errUsuario?.message || 'error desconocido'}`)
+                    return null
+                }
+
+                usuarioId = nuevoUsuario.id
+                emailCoordinador = emailPendiente
+                // Se registra ya mismo como "real" por si el nombre se repite
+                // más adelante en el mismo lote (otro dirigente citando al
+                // mismo coordinador nuevo) — evita crear dos usuarios para
+                // el mismo nombre dentro de la misma corrida.
+                usuarioRealPorNombre.set(nombreUpper, { id: usuarioId, email: emailPendiente })
+                avisos.push(`"${nombreUpper}" creado automáticamente como coordinador/dirigente SIN acceso (sin cédula/email reales) — actívalo desde su módulo cuando tengas el dato.`)
+            }
+
+            const { data: nuevoCoord, error: errCoord } = await adminClient
+                .from('coordinadores')
+                .insert({
+                    usuario_id: usuarioId,
+                    email: emailCoordinador,
+                    tipo: 'Coordinador',
+                    estado: 'activo',
+                })
+                .select('id')
+                .single()
+
+            if (errCoord || !nuevoCoord) {
+                avisos.push(`No se pudo crear el registro de coordinador para "${nombreUpper}": ${errCoord?.message || 'error desconocido'}`)
+                return null
+            }
+
+            nombreToCoordId.set(nombreUpper, nuevoCoord.id)
+            return nuevoCoord.id
+        }
+
+        async function resolverOCrearReferencia(nombreOriginal: string, telefono: string | null): Promise<string | null> {
+            const nombreTrim = nombreOriginal.trim()
+            if (!nombreTrim) return null
+            const key = nombreTrim.toUpperCase()
+            const existente = referenciaMap.get(key)
+            if (existente) return existente
+
+            const { data: nuevaRef, error } = await adminClient
+                .from('referencia')
+                .insert({ nombre: nombreTrim, telefono: telefono || null, ciudad: null })
+                .select('id')
+                .single()
+
+            if (error || !nuevaRef) {
+                avisos.push(`No se pudo crear la referencia "${nombreTrim}": ${error?.message || 'error desconocido'}`)
+                return null
+            }
+            referenciaMap.set(key, nuevaRef.id)
+            return nuevaRef.id
+        }
 
         // ── Pasada 1: normalizar cada fila y resolver/crear geografía ──────
         // (la geografía nueva es rara — casi siempre pega en caché — así que
@@ -116,6 +248,11 @@ export async function POST(request: NextRequest) {
             const email = qEmail(row['EMAIL']) || `migrado_${cedula}@migrado.co`
             const estado = normMap((q(row['ESTADO']) || '').toLowerCase(), ESTADO_MAP) || 'activo'
 
+            const referenciaNombre = q(row['REFERENCIA']) || ''
+            const referenciaId = referenciaNombre
+                ? await resolverOCrearReferencia(referenciaNombre, q(row['TEL REFERENCIA']))
+                : null
+
             const usuarioPayload: Record<string, any> = {
                 tipo_documento: 'CC',
                 numero_documento: cedula,
@@ -142,6 +279,7 @@ export async function POST(request: NextRequest) {
                 instagram: q(row['INSTAGRAM']) || null,
                 twitter: q(row['TWITTER']) || null,
                 referido_por: q(row['REFERENCIA']) || null,
+                referencia_id: referenciaId,
                 telefono_referencia: q(row['TEL REFERENCIA']) || null,
                 ubicacion: q(row['UBICACION']) || null,
                 beneficiario: q(row['BENEFICIARIO']) || null,
@@ -153,15 +291,31 @@ export async function POST(request: NextRequest) {
                 estado,
                 observaciones: q(row['OBSERVACIONES']) || null,
             }
-            const fechaNac = q(row['NACIMIENTO'])
+            const fechaNac = qFecha(row['NACIMIENTO'])
             if (fechaNac) usuarioPayload.fecha_nacimiento = fechaNac
+            else if (q(row['NACIMIENTO'])) avisos.push(`Fila ${filaNum} (${cedula}): NACIMIENTO "${row['NACIMIENTO']}" no se pudo interpretar como fecha — se dejó vacío`)
+
+            const fechaVerifSticker = qFecha(row['FECHA VERIFICACIÓN STICKER'])
+            if (fechaVerifSticker) usuarioPayload.fecha_verificacion_sticker = fechaVerifSticker
 
             const coordNombre = (q(row['COORDINADOR']) || '').toUpperCase()
             const dirNombre = (q(row['DIRIGENTE']) || '').toUpperCase()
-            const coordinadorId = coordNombre ? nombreToCoordId.get(coordNombre) ?? null : null
-            const dirigenteId = dirNombre ? nombreToCoordId.get(dirNombre) ?? null : null
-            if (coordNombre && !coordinadorId) avisos.push(`Fila ${filaNum} (${cedula}): coordinador "${coordNombre}" no encontrado, quedó sin asignar`)
-            if (dirNombre && !dirigenteId) avisos.push(`Fila ${filaNum} (${cedula}): dirigente "${dirNombre}" no encontrado, quedó sin asignar`)
+            const coordinadorId = coordNombre ? await resolverOCrearCoordinador(coordNombre) : null
+            const dirigenteId = dirNombre ? await resolverOCrearCoordinador(dirNombre) : null
+
+            // Si la fila trae AMBOS, registrar en `dirigentes` que ese
+            // coordinador reporta a ese dirigente (tabla de jerarquía,
+            // separada de militantes.coordinador_id/dirigente_id que solo
+            // etiquetan al militante). Un coordinador puede convertirse en
+            // dirigente o venir de por fuera — esto no lo decide el import,
+            // solo registra el par tal como viene en el Excel.
+            if (coordinadorId && dirigenteId && coordinadorId !== dirigenteId) {
+                const parKey = `${coordinadorId}|${dirigenteId}`
+                if (!paresDirigentesExistentes.has(parKey)) {
+                    paresDirigentesExistentes.add(parKey)
+                    paresDirigentesNuevos.push({ id_coordinador: coordinadorId, id_dirigente: dirigenteId })
+                }
+            }
 
             const tipoExcel = (q(row['TIPO']) || '').toLowerCase()
             if (tipoExcel && tipoExcel !== '80001' && tipoExcel !== 'militante') {
@@ -257,11 +411,18 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        const insertDirigentes = paresDirigentesNuevos.length > 0
+            ? adminClient.from('dirigentes').insert(paresDirigentesNuevos).then(({ error }: any) => {
+                if (error) avisos.push(`No se pudieron guardar ${paresDirigentesNuevos.length} vínculos coordinador↔dirigente: ${error.message}`)
+            })
+            : Promise.resolve()
+
         await Promise.all([
             militantesAInsertar.length > 0
                 ? adminClient.from('militantes').insert(militantesAInsertar)
                 : Promise.resolve(),
             ...actualizacionesMilitante,
+            insertDirigentes,
         ])
 
         return NextResponse.json({ creados, actualizados, errores, avisos })

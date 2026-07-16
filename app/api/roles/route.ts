@@ -89,7 +89,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: true, message: "Rol creado", perfil })
         }
         // Asignar rol a usuario
-        const { usuario_id, perfil_id, auth_user_id } = body
+        const { usuario_id, perfil_id, auth_user_id, password, email: emailOverride } = body
         if (!usuario_id || !perfil_id) {
             return NextResponse.json({ error: "usuario_id y perfil_id son requeridos" }, { status: 400 })
         }
@@ -109,20 +109,30 @@ export async function POST(request: Request) {
 
         // Si no tiene auth_user_id, crear usuario en Supabase Auth
         if (!finalAuthUserId) {
-            if (!usuario.email) {
+            const loginEmail = emailOverride || usuario.email
+            if (!loginEmail) {
                 return NextResponse.json({ error: "El usuario debe tener un email para crear la cuenta de autenticación" }, { status: 400 })
             }
 
-            if (!usuario.numero_documento) {
-                return NextResponse.json({ error: "El usuario debe tener número de documento para crear la contraseña temporal" }, { status: 400 })
+            // Contraseña: la que puso el admin en el formulario. Si no mandó
+            // ninguna, se usa el número de documento como respaldo (comportamiento
+            // anterior), pero lo ideal es que siempre venga una del formulario.
+            const finalPassword = password || usuario.numero_documento
+            if (!finalPassword) {
+                return NextResponse.json({ error: "Debes indicar una contraseña para la cuenta de acceso" }, { status: 400 })
+            }
+            if (String(finalPassword).length < 6) {
+                return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 })
             }
 
             try {
-                // Crear usuario en Supabase Auth
+                // Crear usuario en Supabase Auth. email_confirm:true evita que
+                // Supabase mande correo de confirmación — el acceso queda
+                // habilitado de inmediato con la contraseña que definió el admin.
                 const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-                    email: usuario.email,
-                    password: usuario.numero_documento, // Usar número de documento como contraseña
-                    email_confirm: true, // Confirmar email automáticamente
+                    email: loginEmail,
+                    password: String(finalPassword),
+                    email_confirm: true,
                     user_metadata: {
                         nombres: usuario.nombres,
                         apellidos: usuario.apellidos,

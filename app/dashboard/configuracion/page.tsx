@@ -4,11 +4,13 @@ import { CiudadesManager } from "@/components/configuracion/lugares/ciudades-man
 import { BarriosManager } from "@/components/configuracion/lugares/barrios-manager";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, MapPin, Building2, Users, Trees, Link } from "lucide-react";
+import { Settings, MapPin, Building2, Users, Trees, Link, AlertOctagon, Wrench } from "lucide-react";
 import { getCiudades, getBarrios, getGrupoEtnicos, getReferencias, getcompromiso, getCatalogoGestion } from "@/lib/actions/configuracion";
 import { GrupoEtnicoManager } from "@/components/configuracion/grupo-etnico-manager";
 import { ReferenciasCompromisosManager } from "@/components/configuracion/referencias-compromisos-manager";
 import { ElementosManager } from "@/components/configuracion/elementos-manager";
+import { ResetDatosPersonas } from "@/components/configuracion/reset-datos";
+import { FusionarPendientes } from "@/components/configuracion/fusionar-pendientes";
 
 export default async function ConfiguracionPage({ searchParams }: { searchParams?: any }) {
     // `searchParams` puede ser una Promise en Next.js App Router; unwrapearla antes de usar
@@ -53,6 +55,14 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
                         <TabsTrigger value="elementos" className="flex items-center gap-2">
                             <Building2 className="h-4 w-4" />
                             Elementos Gestión
+                        </TabsTrigger>
+                        <TabsTrigger value="mantenimiento" className="flex items-center gap-2">
+                            <Wrench className="h-4 w-4" />
+                            Mantenimiento
+                        </TabsTrigger>
+                        <TabsTrigger value="reset" className="flex items-center gap-2 text-destructive">
+                            <AlertOctagon className="h-4 w-4" />
+                            Zona de Peligro
                         </TabsTrigger>
                     </TabsList>
 
@@ -135,6 +145,34 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
                             </CardHeader>
                             <CardContent>
                                 <ElementosManager initialElementos={elementos} />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="mantenimiento">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Mantenimiento</CardTitle>
+                                <CardDescription>
+                                    Herramientas para corregir datos generados por el import masivo de Personas.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <FusionarPendientes />
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="reset">
+                        <Card className="border-destructive/40">
+                            <CardHeader>
+                                <CardTitle className="text-destructive">Zona de Peligro</CardTitle>
+                                <CardDescription>
+                                    Borrado masivo de datos. Úsalo solo para reiniciar el módulo de Personas antes de una recarga completa desde el Excel.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <ResetDatosPersonas />
                             </CardContent>
                         </Card>
                     </TabsContent>

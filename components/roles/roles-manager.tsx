@@ -19,8 +19,16 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { Loader2, Shield, UserCheck, UserX, RefreshCw } from "lucide-react"
+import { Loader2, Shield, UserCheck, UserX, RefreshCw, KeyRound } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog"
 
 interface Perfil {
     id: string
@@ -120,8 +128,27 @@ export function RolesManager() {
         }
     }, [searching])
 
-    const handleAssignRole = async (usuario: Usuario, perfilId: string) => {
+    // Cuando el usuario YA tiene cuenta de acceso (auth_user_id), asignar el
+    // rol es directo. Cuando NO la tiene, hay que abrir el diálogo para que
+    // el admin defina el correo/contraseña de acceso antes de crear la cuenta.
+    const [credencialesDialog, setCredencialesDialog] = useState<{ usuario: Usuario; perfilId: string } | null>(null)
+    const [credEmail, setCredEmail] = useState("")
+    const [credPassword, setCredPassword] = useState("")
+    const [credPasswordConfirm, setCredPasswordConfirm] = useState("")
+
+    const handleSelectRole = (usuario: Usuario, perfilId: string) => {
         if (!perfilId) return
+        if (usuario.auth_user_id) {
+            asignarRol(usuario, perfilId)
+        } else {
+            setCredencialesDialog({ usuario, perfilId })
+            setCredEmail(usuario.email || "")
+            setCredPassword("")
+            setCredPasswordConfirm("")
+        }
+    }
+
+    const asignarRol = async (usuario: Usuario, perfilId: string, credenciales?: { email: string; password: string }) => {
         setSaving(usuario.id)
         try {
             const res = await fetch("/api/roles", {
@@ -131,16 +158,17 @@ export function RolesManager() {
                     usuario_id: usuario.id,
                     perfil_id: perfilId,
                     auth_user_id: usuario.auth_user_id,
+                    email: credenciales?.email,
+                    password: credenciales?.password,
                 }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "Error asignando rol")
             toast.success(data.message || "Rol asignado correctamente")
 
-            // Si se creó una cuenta de autenticación, mostrar información adicional
             if (data.auth_created) {
-                toast.info(`Se creó una cuenta de autenticación para ${usuario.nombres}. La contraseña es su número de documento: ${usuario.numero_documento || 'N/A'}`, {
-                    duration: 10000, // Mostrar por más tiempo
+                toast.info(`Cuenta de acceso creada para ${usuario.nombres} con el correo y la contraseña que definiste. No requiere confirmación por email — ya puede iniciar sesión.`, {
+                    duration: 8000,
                 })
             }
 
@@ -151,6 +179,24 @@ export function RolesManager() {
         } finally {
             setSaving(null)
         }
+    }
+
+    const confirmarCredenciales = () => {
+        if (!credencialesDialog) return
+        if (!credEmail.trim()) {
+            toast.error("Ingresa un correo para la cuenta de acceso")
+            return
+        }
+        if (credPassword.length < 6) {
+            toast.error("La contraseña debe tener al menos 6 caracteres")
+            return
+        }
+        if (credPassword !== credPasswordConfirm) {
+            toast.error("Las contraseñas no coinciden")
+            return
+        }
+        asignarRol(credencialesDialog.usuario, credencialesDialog.perfilId, { email: credEmail.trim(), password: credPassword })
+        setCredencialesDialog(null)
     }
 
     const handleRemoveRole = async (usuario: Usuario) => {
@@ -287,7 +333,7 @@ export function RolesManager() {
                                     <TableCell>
                                         <Select
                                             value={usuario.perfil_id || ""}
-                                            onValueChange={(val) => handleAssignRole(usuario, val)}
+                                            onValueChange={(val) => handleSelectRole(usuario, val)}
                                             disabled={saving === usuario.id}
                                         >
                                             <SelectTrigger className="w-48">
@@ -372,6 +418,64 @@ export function RolesManager() {
                     ))}
                 </div>
             </div>
+
+            {/* Diálogo: definir correo y contraseña de acceso al habilitar un rol
+                a alguien que todavía no tiene cuenta. No pide confirmación de
+                correo — la cuenta queda lista para iniciar sesión de inmediato. */}
+            <Dialog open={!!credencialesDialog} onOpenChange={(open) => !open && setCredencialesDialog(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="h-4 w-4" />
+                            Habilitar acceso
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            {credencialesDialog?.usuario.nombres} {credencialesDialog?.usuario.apellidos} todavía no tiene
+                            cuenta de acceso. Define el correo y la contraseña con la que va a iniciar sesión.
+                        </p>
+                        <div className="space-y-2">
+                            <Label htmlFor="cred-email">Correo de acceso</Label>
+                            <Input
+                                id="cred-email"
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={credEmail}
+                                onChange={(e) => setCredEmail(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="cred-password">Contraseña</Label>
+                            <Input
+                                id="cred-password"
+                                type="password"
+                                placeholder="Mínimo 6 caracteres"
+                                value={credPassword}
+                                onChange={(e) => setCredPassword(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="cred-password-confirm">Confirmar contraseña</Label>
+                            <Input
+                                id="cred-password-confirm"
+                                type="password"
+                                placeholder="Repite la contraseña"
+                                value={credPasswordConfirm}
+                                onChange={(e) => setCredPasswordConfirm(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCredencialesDialog(null)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={confirmarCredenciales}>
+                            Crear acceso y asignar rol
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

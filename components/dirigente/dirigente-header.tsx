@@ -9,21 +9,6 @@ export function DirigenteHeader() {
     const router = useRouter()
     const { permisos } = usePermisos("Módulo Dirigente")
 
-    // Allow forcing the create button in local/dev for quicker testing.
-    // Use NEXT_PUBLIC_FORCE_SHOW_CREATE=1 or run on localhost to see the button even if permisos.crear is false.
-    const forceShowCreate = (() => {
-        try {
-            if (typeof window !== 'undefined') {
-                const host = window.location.hostname
-                if (host === 'localhost' || host === '127.0.0.1') return true
-            }
-        } catch (e) {
-            /* ignore */
-        }
-
-        return process.env.NEXT_PUBLIC_FORCE_SHOW_CREATE === '1'
-    })()
-
     return (
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -46,7 +31,7 @@ export function DirigenteHeader() {
                     </Button>
                 )}
 
-                {(permisos?.crear || forceShowCreate) && (
+                {permisos?.crear && (
                     <Button
                         size="sm"
                         className="bg-primary text-primary-foreground hover:bg-primary/90"

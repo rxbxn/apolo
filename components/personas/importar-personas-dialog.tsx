@@ -16,6 +16,7 @@ interface ResumenImportacion {
     actualizados: number
     errores: { fila: number; cedula: string; error: string }[]
     avisos: string[]
+    fusionados?: number
 }
 
 export function ImportarPersonasDialog({ trigger }: { trigger: React.ReactNode }) {
@@ -26,6 +27,7 @@ export function ImportarPersonasDialog({ trigger }: { trigger: React.ReactNode }
     const [progreso, setProgreso] = useState(0)
     const [loteActual, setLoteActual] = useState(0)
     const [totalLotes, setTotalLotes] = useState(0)
+    const [fusionando, setFusionando] = useState(false)
     const [resumen, setResumen] = useState<ResumenImportacion | null>(null)
 
     function handleTriggerClick() {
@@ -104,10 +106,30 @@ export function ImportarPersonasDialog({ trigger }: { trigger: React.ReactNode }
                 setResumen({ ...acumulado })
             }
 
+            // Al terminar TODOS los lotes: un coordinador/dirigente mencionado
+            // en un lote temprano puede haberse creado como placeholder
+            // porque su propia fila (con cédula real) todavía no existía en
+            // la base — recién se crea en un lote posterior. Con el archivo
+            // completo ya cargado, ahora sí se puede fusionar automáticamente
+            // en vez de dejarle al usuario el paso manual en Configuración.
+            setFusionando(true)
+            try {
+                const resFusion = await fetch("/api/admin/fusionar-pendientes", { method: "POST" })
+                const dataFusion = await resFusion.json()
+                if (resFusion.ok) acumulado.fusionados = dataFusion.fusionados ?? 0
+            } catch {
+                // No bloquear el resumen de importación si esto falla — se
+                // puede correr manualmente después desde Configuración.
+            } finally {
+                setFusionando(false)
+                setResumen({ ...acumulado })
+            }
+
+            const sufijoFusion = acumulado.fusionados ? ` · ${acumulado.fusionados} coordinador(es) duplicados fusionados` : ''
             if (acumulado.errores.some((e) => e.error.startsWith('Lote completo'))) {
-                toast.warning(`Importación terminada con lotes fallidos: ${acumulado.creados} creados, ${acumulado.actualizados} actualizados. Revisa los errores y vuelve a importar el archivo para reintentar lo que faltó.`)
+                toast.warning(`Importación terminada con lotes fallidos: ${acumulado.creados} creados, ${acumulado.actualizados} actualizados${sufijoFusion}. Revisa los errores y vuelve a importar el archivo para reintentar lo que faltó.`)
             } else {
-                toast.success(`Importación completa: ${acumulado.creados} creados, ${acumulado.actualizados} actualizados`)
+                toast.success(`Importación completa: ${acumulado.creados} creados, ${acumulado.actualizados} actualizados${sufijoFusion}`)
             }
             router.refresh()
         } catch (err: any) {
@@ -154,11 +176,13 @@ export function ImportarPersonasDialog({ trigger }: { trigger: React.ReactNode }
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="flex items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
-                                        Procesando lote {loteActual} de {totalLotes}...
+                                        {fusionando
+                                            ? "Revisando coordinadores/dirigentes duplicados..."
+                                            : `Procesando lote ${loteActual} de ${totalLotes}...`}
                                     </span>
-                                    <span>{progreso}%</span>
+                                    <span>{fusionando ? "" : `${progreso}%`}</span>
                                 </div>
-                                <Progress value={progreso} />
+                                <Progress value={fusionando ? 100 : progreso} />
                             </div>
                         )}
 
@@ -167,6 +191,7 @@ export function ImportarPersonasDialog({ trigger }: { trigger: React.ReactNode }
                                 <div className="flex items-center gap-2 text-sm text-emerald-600">
                                     <CheckCircle2 className="h-4 w-4" />
                                     {resumen.creados} creados · {resumen.actualizados} actualizados
+                                    {resumen.fusionados ? ` · ${resumen.fusionados} coordinadores duplicados fusionados` : ""}
                                 </div>
 
                                 {resumen.avisos.length > 0 && (

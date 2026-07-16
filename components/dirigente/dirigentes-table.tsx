@@ -42,7 +42,7 @@ export function DirigentesTable() {
             const to   = from + PAGE_SIZE - 1
             const { data: rels, error: relsErr } = await supabase
                 .from('dirigentes')
-                .select('id_dirigente, id_coordinador')
+                .select('id, id_dirigente, id_coordinador')
                 .range(from, to)
             if (relsErr) throw relsErr
             if (!rels || rels.length === 0) { setDirigentes([]); return }
@@ -69,7 +69,11 @@ export function DirigentesTable() {
             }
 
             setDirigentes(rels.map((r: any) => ({
-                id:                 r.id_dirigente,          // PK de dirigentes
+                id:                 r.id,                    // PK real de dirigentes (bigint) — antes se usaba
+                                                               // r.id_dirigente por error, que se repite una vez
+                                                               // por cada coordinador que reporta al mismo
+                                                               // dirigente, y rompía tanto la key de React como
+                                                               // el botón Eliminar (mandaba el UUID equivocado).
                 dirigente_id:       r.id_dirigente,
                 coordinador_id:     r.id_coordinador,
                 dirigente_nombre:   nombre(r.id_dirigente),

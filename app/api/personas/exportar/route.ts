@@ -11,12 +11,13 @@ export async function GET(request: NextRequest) {
     try {
         const adminClient = createAdminClient()
 
-        const [{ data: usuarios, error: uErr }, { data: militantes }, { data: coordinadores }] = await Promise.all([
+        const [{ data: usuarios, error: uErr }, { data: militantes }, { data: coordinadores }, { data: referencias }] = await Promise.all([
             (adminClient as any).from('usuarios').select('*').order('creado_en', { ascending: true }),
             (adminClient as any).from('militantes').select('*'),
             (adminClient as any)
                 .from('coordinadores')
                 .select('id, usuario_id, usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)'),
+            (adminClient as any).from('referencia').select('id, nombre, telefono'),
         ])
 
         if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 })
@@ -30,10 +31,20 @@ export async function GET(request: NextRequest) {
             if (u) nombreByCoordId.set(c.id, `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim().toUpperCase())
         })
 
+        // referencia_id es un UUID real (tabla `referencia`) — antes de este
+        // fix, si `referido_por` (texto libre viejo) venía vacío, el export
+        // caía a mostrar el UUID crudo de referencia_id en la columna
+        // REFERENCIA. Ahora se resuelve contra el nombre real.
+        const referenciaById = new Map<string, { nombre: string; telefono: string | null }>()
+        ;(referencias ?? []).forEach((r: any) => {
+            referenciaById.set(r.id, { nombre: r.nombre ?? '', telefono: r.telefono ?? null })
+        })
+
         const rows = (usuarios ?? []).map((u: any, idx: number) => {
             const m = militanteByUsuario.get(u.id) ?? {}
             const coordNombre = m.coordinador_id ? (nombreByCoordId.get(m.coordinador_id) ?? '') : ''
             const dirigenteNombre = m.dirigente_id ? (nombreByCoordId.get(m.dirigente_id) ?? '') : ''
+            const referenciaRow = u.referencia_id ? referenciaById.get(u.referencia_id) : null
 
             return {
                 'ID': idx + 1,
@@ -60,8 +71,8 @@ export async function GET(request: NextRequest) {
                 'NACIMIENTO': u.fecha_nacimiento ?? '',
                 'GENERO': u.genero ?? '',
                 'EMAIL': u.email ?? '',
-                'REFERENCIA': u.referido_por || u.referencia_id || '',
-                'TEL REFERENCIA': u.telefono_referencia ?? '',
+                'REFERENCIA': u.referido_por || referenciaRow?.nombre || '',
+                'TEL REFERENCIA': u.telefono_referencia || referenciaRow?.telefono || '',
                 'VIVIENDA': u.tipo_vivienda ?? '',
                 'FACEBOOK': u.facebook ?? '',
                 'INSTAGRAM': u.instagram ?? '',
