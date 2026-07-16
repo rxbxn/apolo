@@ -51,45 +51,58 @@ export async function getGestiones() {
 
     try {
         // formularios_gestion solo guarda militante_id (UUID) — la tabla de
-        // listado necesita el nombre, así que hay que traerlo con un embed
-        // hasta usuarios. Antes se hacía `.select("*")` sin join, así que
-        // `gestion.militante_nombre` siempre venía undefined y la columna
-        // "Nombre" mostraba "Sin asignar" incluso con un militante asignado.
-        let { data: dataTabla, error: errorTabla } = await supabase
+        // listado necesita el nombre. Antes se hacía `.select("*")` sin
+        // join, así que `gestion.militante_nombre` siempre venía undefined
+        // y la columna "Nombre" mostraba "Sin asignar" incluso con un
+        // militante asignado. Un primer intento usó el embed automático de
+        // PostgREST (`militante:militantes(...)`), pero eso depende de que
+        // exista un FK real `formularios_gestion.militante_id →
+        // militantes.id` en el schema cache — en producción esa columna
+        // venía sin FK (ver comentario en schema_apolo_v2.sql), así que el
+        // embed fallaba en silencio y siempre caía al fallback sin nombre,
+        // aun con militante_id genuinamente asignado.
+        //
+        // Por eso ahora se resuelve en dos pasos manuales, sin depender de
+        // ningún FK: 1) traer los formularios, 2) traer los militantes
+        // referenciados (con su usuario) filtrando por id, y cruzar en JS.
+        const { data: dataTabla, error: errorTabla } = await supabase
             .from("formularios_gestion")
-            .select("*, militante:militantes(usuarios!militantes_usuario_id_fkey(nombres, apellidos))")
+            .select("*")
             .order("creado_en", { ascending: false })
-
-        if (errorTabla) {
-            // Si el FK militante_id → militantes.id todavía no existe en la
-            // BD real (producción venía con esa columna sin FK, ver
-            // schema_apolo_v2.sql), PostgREST no puede resolver el embed —
-            // no romper el listado, solo devolverlo sin el nombre.
-            const msg = String(errorTabla.message || errorTabla)
-            if (/relationship|schema cache/i.test(msg)) {
-                console.warn("getGestiones: no se pudo resolver el embed de militante, devolviendo sin nombre:", msg)
-                const fallback = await supabase
-                    .from("formularios_gestion")
-                    .select("*")
-                    .order("creado_en", { ascending: false })
-                dataTabla = fallback.data
-                errorTabla = fallback.error
-            }
-        }
 
         if (errorTabla) {
             console.error("Error fetching gestiones:", errorTabla)
             return []
         }
 
-        return (dataTabla || []).map((g: any) => {
-            const u = g.militante?.usuarios
-            const { militante, ...resto } = g
-            return {
-                ...resto,
-                militante_nombre: u ? `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() || null : null,
+        const militanteIds = [...new Set(
+            (dataTabla || []).map((g: any) => g.militante_id).filter(Boolean)
+        )]
+
+        let nombrePorMilitanteId = new Map<string, string>()
+        if (militanteIds.length > 0) {
+            const { data: militantesData, error: militantesError } = await supabase
+                .from("militantes")
+                .select("id, usuarios!militantes_usuario_id_fkey(nombres, apellidos)")
+                .in("id", militanteIds)
+
+            if (militantesError) {
+                console.error("Error resolviendo nombres de militantes para el listado de gestiones:", militantesError)
+            } else {
+                nombrePorMilitanteId = new Map(
+                    (militantesData || []).map((m: any) => {
+                        const u = m.usuarios
+                        const nombre = u ? `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() : ''
+                        return [m.id, nombre || 'Sin nombre']
+                    })
+                )
             }
-        })
+        }
+
+        return (dataTabla || []).map((g: any) => ({
+            ...g,
+            militante_nombre: g.militante_id ? (nombrePorMilitanteId.get(g.militante_id) || null) : null,
+        }))
 
     } catch (error) {
         console.error("Error in getGestiones:", error)
