@@ -462,3 +462,74 @@ export async function deleteCatalogoElemento(id: string) {
     if (error) throw await enrichTableError('catalogo_gestion', error)
     revalidatePath('/dashboard/configuracion')
 }
+
+// --- Catálogos simples de Gestión Gerencial (Elemento/Unidad/Categoría/Sector) ---
+// Cada uno es su propia tabla de una sola columna (nombre) — reemplazan la
+// derivación "distinct" que antes se hacía desde `catalogo_gestion` (pensada
+// para otra cosa: filas con elemento+unidad+categoria+sector combinados) y
+// la tabla `elementos`, que no tenía ningún panel de administración. Ver
+// cambios/CREAR_CATALOGOS_GESTION.sql para la migración.
+export type CatalogoSimple = {
+    id: string
+    nombre: string
+    creado_en?: string
+}
+
+async function getCatalogoSimple(tabla: string): Promise<CatalogoSimple[]> {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { data, error } = await supabase.from(tabla).select('*').order('nombre')
+    if (error) {
+        if (isTableNotFoundError(error)) return []
+        throw await enrichTableError(tabla, error)
+    }
+    return (data as CatalogoSimple[]) || []
+}
+
+async function createCatalogoSimple(tabla: string, formData: FormData) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const nombre = String(formData.get('nombre') || '').trim()
+    if (!nombre) throw new Error('El nombre es obligatorio')
+    const { error } = await supabase.from(tabla).insert([{ nombre }])
+    if (error) throw await enrichTableError(tabla, error)
+    revalidatePath('/dashboard/configuracion')
+}
+
+async function updateCatalogoSimple(tabla: string, id: string, formData: FormData) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const nombre = String(formData.get('nombre') || '').trim()
+    if (!nombre) throw new Error('El nombre es obligatorio')
+    const { error } = await supabase.from(tabla).update({ nombre }).eq('id', id)
+    if (error) throw await enrichTableError(tabla, error)
+    revalidatePath('/dashboard/configuracion')
+}
+
+async function deleteCatalogoSimple(tabla: string, id: string) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+    const { error } = await supabase.from(tabla).delete().eq('id', id)
+    if (error) throw await enrichTableError(tabla, error)
+    revalidatePath('/dashboard/configuracion')
+}
+
+export async function getGestionElementos() { return getCatalogoSimple('gestion_elementos') }
+export async function createGestionElemento(formData: FormData) { return createCatalogoSimple('gestion_elementos', formData) }
+export async function updateGestionElemento(id: string, formData: FormData) { return updateCatalogoSimple('gestion_elementos', id, formData) }
+export async function deleteGestionElemento(id: string) { return deleteCatalogoSimple('gestion_elementos', id) }
+
+export async function getGestionUnidades() { return getCatalogoSimple('gestion_unidades') }
+export async function createGestionUnidad(formData: FormData) { return createCatalogoSimple('gestion_unidades', formData) }
+export async function updateGestionUnidad(id: string, formData: FormData) { return updateCatalogoSimple('gestion_unidades', id, formData) }
+export async function deleteGestionUnidad(id: string) { return deleteCatalogoSimple('gestion_unidades', id) }
+
+export async function getGestionCategorias() { return getCatalogoSimple('gestion_categorias') }
+export async function createGestionCategoria(formData: FormData) { return createCatalogoSimple('gestion_categorias', formData) }
+export async function updateGestionCategoria(id: string, formData: FormData) { return updateCatalogoSimple('gestion_categorias', id, formData) }
+export async function deleteGestionCategoria(id: string) { return deleteCatalogoSimple('gestion_categorias', id) }
+
+export async function getGestionSectores() { return getCatalogoSimple('gestion_sectores') }
+export async function createGestionSector(formData: FormData) { return createCatalogoSimple('gestion_sectores', formData) }
+export async function updateGestionSector(id: string, formData: FormData) { return updateCatalogoSimple('gestion_sectores', id, formData) }
+export async function deleteGestionSector(id: string) { return deleteCatalogoSimple('gestion_sectores', id) }

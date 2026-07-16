@@ -60,12 +60,21 @@ const formSchema = z.object({
     localidad_id: z.string().optional(),
     receptor: z.string().optional(),
     estado_difusion: z.string().default('pendiente'),
-    limpio_conteo: z.coerce.number().default(0),
-    limpio_pendiente: z.coerce.number().default(0),
+    // limpio_conteo/limpio_pendiente son columnas INTEGER en
+    // formularios_gestion — un decimal como "0.01" pasa la coerción a
+    // number pero Postgres lo rechaza con "invalid input syntax for type
+    // integer". Se valida como entero acá para que el error se vea en el
+    // formulario en vez de tumbar el guardado.
+    limpio_conteo: z.coerce.number().int("Debe ser un número entero").default(0),
+    limpio_pendiente: z.coerce.number().int("Debe ser un número entero").default(0),
     codigo_lider: z.string().optional(),
     tipo_gestion: z.string().optional(),
     gestor_asignado: z.string().optional(),
     detalle_solicitud: z.string().optional(),
+    // Acepta decimales (centavos). IMPORTANTE: esto requiere haber corrido
+    // cambios/OPCIONAL_AUTORIZACION_TOTAL_DECIMALES.sql — la columna real en
+    // producción venía como INTEGER; si no se corrió esa migración, guardar
+    // con centavos vuelve a tirar "invalid input syntax for type integer".
     autorizacion_total: z.coerce.number().default(0),
     fecha_entrega: z.date().optional(),
     observaciones_prioridad: z.string().optional(),
@@ -243,13 +252,28 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
         try {
             const formData: FormularioGestion = {
                 ...values,
-                localidad: values.localidad_id, // Mapear localidad_id a localidad
+                // militante_id/dirigente_id/coordinador_id son columnas UUID
+                // en formularios_gestion. Si el campo quedó sin seleccionar
+                // (o el autocompletado de militante lo dejó en "" porque ese
+                // militante no tiene coordinador/dirigente asignado), react-
+                // hook-form envía "" y Postgres rechaza eso con
+                // "invalid input syntax for type uuid" — hay que mandar null.
+                militante_id: values.militante_id || undefined,
+                dirigente_id: values.dirigente_id || undefined,
+                coordinador_id: values.coordinador_id || undefined,
+                localidad: values.localidad_id || undefined, // Mapear localidad_id a localidad
+                // Red de seguridad además de la validación .int() del
+                // schema: limpio_conteo/limpio_pendiente son INTEGER en BD.
+                // autorizacion_total ya NO se redondea — ver comentario en
+                // el schema del form sobre la migración a NUMERIC.
+                limpio_conteo: Math.round(values.limpio_conteo),
+                limpio_pendiente: Math.round(values.limpio_pendiente),
                 fecha_necesidad: values.fecha_necesidad.toISOString().split('T')[0],
                 fecha_entrega: values.fecha_entrega?.toISOString().split('T')[0],
                 solicitudes: solicitudes,
                 estado: 'borrador'
             }
-            
+
             // Eliminar localidad_id del objeto final
             delete (formData as any).localidad_id
 
@@ -378,9 +402,18 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                                             // Al elegir un militante, autocompletar el
                                             // Coordinador y Dirigente que ya tiene asignados
                                             // (militantes.coordinador_id / dirigente_id).
+                                            //
+                                            // El setValue de los otros dos Select se difiere un
+                                            // tick: si se dispara en el mismo evento con el que
+                                            // Radix todavía está cerrando/desmontando el portal
+                                            // de ESTE Select, React puede intentar reconciliar el
+                                            // DOM de los Select hermanos a mitad de esa limpieza y
+                                            // tirar "Failed to execute 'removeChild' on 'Node'".
                                             const militante = militantes.find((m) => m.id === value)
-                                            form.setValue('coordinador_id', militante?.coordinador_id || "")
-                                            form.setValue('dirigente_id', militante?.dirigente_id || "")
+                                            setTimeout(() => {
+                                                form.setValue('coordinador_id', militante?.coordinador_id || "")
+                                                form.setValue('dirigente_id', militante?.dirigente_id || "")
+                                            }, 0)
                                         }}
                                         value={field.value}
                                     >
@@ -543,7 +576,7 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                                 <FormItem>
                                     <FormLabel>Limpio Conteo</FormLabel>
                                     <FormControl>
-                                        <Input type="number" placeholder="0" {...field} />
+                                        <Input type="number" step="1" min="0" placeholder="0" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -557,7 +590,7 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                                 <FormItem>
                                     <FormLabel>Limpio Pendiente</FormLabel>
                                     <FormControl>
-                                        <Input type="number" placeholder="0" {...field} />
+                                        <Input type="number" step="1" min="0" placeholder="0" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -797,7 +830,7 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                                 <FormItem>
                                     <FormLabel>Autorización Total</FormLabel>
                                     <FormControl>
-                                        <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                                        <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

@@ -13,9 +13,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Search, Edit, Calendar, User, Users, Eye, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Edit, Trash2, Calendar, User, Users, Eye, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
-import { getGestiones } from "@/lib/actions/gestion"
+import { getGestiones, deleteGestion } from "@/lib/actions/gestion"
+import { useConfirm } from "@/lib/hooks/use-confirm"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const getPrioridadColor = (prioridad: string) => {
     const colors: Record<string, string> = {
@@ -38,6 +40,9 @@ export function GestionTable() {
     // Filtros
     const [search, setSearch] = useState("")
     const [prioridadFilter, setPrioridadFilter] = useState<string>("todos")
+
+    // Eliminar
+    const { isOpen, config, confirm, handleConfirm, handleCancel, setIsOpen } = useConfirm()
 
     const pageSize = 10
 
@@ -94,7 +99,28 @@ export function GestionTable() {
         }
     }
 
+    async function handleEliminar(gestion: any) {
+        const ok = await confirm({
+            title: "Eliminar formulario",
+            description: `¿Eliminar el formulario ${gestion.numero_formulario}? Esta acción no se puede deshacer y también borra sus solicitudes de elementos.`,
+            confirmText: "Eliminar",
+            cancelText: "Cancelar",
+            variant: "destructive",
+        })
+        if (!ok) return
+
+        try {
+            await deleteGestion(gestion.id)
+            toast.success("Formulario eliminado correctamente")
+            cargarGestiones()
+        } catch (error) {
+            console.error("Error eliminando gestión:", error)
+            toast.error("Error al eliminar el formulario")
+        }
+    }
+
     return (
+        <>
         <Card>
             <CardContent className="p-6">
                 <div className="space-y-4">
@@ -206,6 +232,14 @@ export function GestionTable() {
                                                         >
                                                             <Edit className="h-4 w-4" />
                                                         </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-destructive hover:text-destructive"
+                                                            onClick={() => handleEliminar(gestion)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -248,5 +282,17 @@ export function GestionTable() {
                 </div>
             </CardContent>
         </Card>
+
+        <ConfirmDialog
+            open={isOpen}
+            onOpenChange={(open) => { if (!open) handleCancel(); else setIsOpen(open) }}
+            title={config?.title || "Confirmar eliminación"}
+            description={config?.description || "¿Estás seguro?"}
+            confirmText={config?.confirmText || "Eliminar"}
+            cancelText={config?.cancelText || "Cancelar"}
+            variant={config?.variant || "destructive"}
+            onConfirm={handleConfirm}
+        />
+        </>
     )
 }

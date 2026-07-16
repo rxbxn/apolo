@@ -50,17 +50,46 @@ export async function getGestiones() {
     const supabase = createClient(cookieStore)
 
     try {
-        const { data: dataTabla, error: errorTabla } = await supabase
+        // formularios_gestion solo guarda militante_id (UUID) — la tabla de
+        // listado necesita el nombre, así que hay que traerlo con un embed
+        // hasta usuarios. Antes se hacía `.select("*")` sin join, así que
+        // `gestion.militante_nombre` siempre venía undefined y la columna
+        // "Nombre" mostraba "Sin asignar" incluso con un militante asignado.
+        let { data: dataTabla, error: errorTabla } = await supabase
             .from("formularios_gestion")
-            .select("*")
+            .select("*, militante:militantes(usuarios!militantes_usuario_id_fkey(nombres, apellidos))")
             .order("creado_en", { ascending: false })
+
+        if (errorTabla) {
+            // Si el FK militante_id → militantes.id todavía no existe en la
+            // BD real (producción venía con esa columna sin FK, ver
+            // schema_apolo_v2.sql), PostgREST no puede resolver el embed —
+            // no romper el listado, solo devolverlo sin el nombre.
+            const msg = String(errorTabla.message || errorTabla)
+            if (/relationship|schema cache/i.test(msg)) {
+                console.warn("getGestiones: no se pudo resolver el embed de militante, devolviendo sin nombre:", msg)
+                const fallback = await supabase
+                    .from("formularios_gestion")
+                    .select("*")
+                    .order("creado_en", { ascending: false })
+                dataTabla = fallback.data
+                errorTabla = fallback.error
+            }
+        }
 
         if (errorTabla) {
             console.error("Error fetching gestiones:", errorTabla)
             return []
         }
 
-        return dataTabla || []
+        return (dataTabla || []).map((g: any) => {
+            const u = g.militante?.usuarios
+            const { militante, ...resto } = g
+            return {
+                ...resto,
+                militante_nombre: u ? `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim() || null : null,
+            }
+        })
 
     } catch (error) {
         console.error("Error in getGestiones:", error)
@@ -119,20 +148,50 @@ export async function getGestionById(id: string) {
     }
 }
 
+// `solicitudes` NO es una columna de `formularios_gestion` — vive en su
+// propia tabla `solicitudes_gestion` (FK formulario_id). Antes se mandaba
+// tal cual dentro del insert/update de formularios_gestion y PostgREST
+// rechazaba todo con "Could not find the 'solicitudes' column ... in the
+// schema cache" (PGRST204). Hay que separarla y escribirla aparte.
+function construirPayloadSolicitudes(formularioId: string, solicitudes: SolicitudGestion[]) {
+    return solicitudes.map((s, i) => ({
+        formulario_id: formularioId,
+        elemento: s.elemento,
+        unidad: s.unidad,
+        categoria: s.categoria,
+        sector: s.sector,
+        cantidad: s.cantidad,
+        orden: s.orden ?? i + 1,
+    }))
+}
+
 export async function createGestion(formulario: FormularioGestion) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
     try {
+        const { solicitudes, ...formularioSinSolicitudes } = formulario
+
         const { data, error } = await supabase
             .from("formularios_gestion")
-            .insert(formulario)
+            .insert(formularioSinSolicitudes)
             .select()
             .single()
 
         if (error) {
             console.error("Error creating gestion:", error)
             throw error
+        }
+
+        if (solicitudes && solicitudes.length > 0) {
+            const { error: solError } = await supabase
+                .from("solicitudes_gestion")
+                .insert(construirPayloadSolicitudes(data.id, solicitudes))
+
+            if (solError) {
+                console.error("Error creando solicitudes:", solError)
+                throw solError
+            }
         }
 
         revalidatePath("/dashboard/gestion-gerencial")
@@ -148,9 +207,11 @@ export async function updateGestion(id: string, formulario: Partial<FormularioGe
     const supabase = createClient(cookieStore)
 
     try {
+        const { solicitudes, ...formularioSinSolicitudes } = formulario
+
         const { data, error } = await supabase
             .from("formularios_gestion")
-            .update(formulario)
+            .update(formularioSinSolicitudes)
             .eq("id", id)
             .select()
             .single()
@@ -160,10 +221,62 @@ export async function updateGestion(id: string, formulario: Partial<FormularioGe
             throw error
         }
 
+        if (solicitudes) {
+            // La UI maneja la lista completa de solicitudes en memoria, así
+            // que la forma simple y correcta de sincronizar es reemplazarlas
+            // todas: borrar las existentes de este formulario e insertar las
+            // actuales.
+            const { error: delError } = await supabase
+                .from("solicitudes_gestion")
+                .delete()
+                .eq("formulario_id", id)
+
+            if (delError) {
+                console.error("Error borrando solicitudes previas:", delError)
+                throw delError
+            }
+
+            if (solicitudes.length > 0) {
+                const { error: insError } = await supabase
+                    .from("solicitudes_gestion")
+                    .insert(construirPayloadSolicitudes(id, solicitudes))
+
+                if (insError) {
+                    console.error("Error insertando solicitudes:", insError)
+                    throw insError
+                }
+            }
+        }
+
         revalidatePath("/dashboard/gestion-gerencial")
         return data
     } catch (error) {
         console.error("Error in updateGestion:", error)
+        throw error
+    }
+}
+
+export async function deleteGestion(id: string) {
+    const cookieStore = await cookies()
+    const supabase = createClient(cookieStore)
+
+    try {
+        // solicitudes_gestion tiene `formulario_id ... ON DELETE CASCADE`
+        // (ver schema_apolo_v2.sql), así que borrar el formulario ya se
+        // lleva sus solicitudes con él.
+        const { error } = await supabase
+            .from("formularios_gestion")
+            .delete()
+            .eq("id", id)
+
+        if (error) {
+            console.error("Error eliminando gestion:", error)
+            throw error
+        }
+
+        revalidatePath("/dashboard/gestion-gerencial")
+    } catch (error) {
+        console.error("Error in deleteGestion:", error)
         throw error
     }
 }
@@ -317,16 +430,16 @@ export async function getDirigentes() {
 
 // Obtener opciones del catálogo.
 //
-// La tabla real `catalogo_gestion` es plana: una fila = un ítem completo
-// (id, elemento, unidad, categoria, sector, creado_en) — NO una fila por
-// combinación (tipo, valor) como asumía el diseño anterior (ese diseño
-// normalizado con columnas tipo/codigo/nombre fue reemplazado, ver
-// schema_apolo_v2.sql). Antes esta función ignoraba por completo el
-// parámetro `tipo` y devolvía SIEMPRE la tabla entera sin filtrar; el
-// formulario luego leía `.nombre`/`.codigo` (columnas que no existen en la
-// tabla real), así que cada SelectItem terminaba con value=undefined —
-// eso disparaba el warning de "key" duplicada de React dentro del <select>
-// oculto que usa Radix para espejar el valor en un <select> nativo.
+// Unidad/Categoría/Sector se leen de sus propias tablas catálogo
+// (gestion_unidades/gestion_categorias/gestion_sectores — ver
+// cambios/CREAR_CATALOGOS_GESTION.sql), administrables desde
+// Configuración → Gestión Gerencial. Antes se derivaban desde
+// `catalogo_gestion`, una tabla pensada para otra cosa (una fila = un ítem
+// completo elemento+unidad+categoria+sector combinados, no una lista
+// independiente por campo) y que además no tiene columnas `nombre`/`codigo`
+// — cada SelectItem terminaba con value=undefined, lo que disparaba el
+// warning de "key" duplicada de React dentro del <select> oculto que usa
+// Radix para espejar el valor en un <select> nativo.
 //
 // "tipo_gestion" no tiene tabla catálogo real en el schema vigente (no hay
 // admin ni columna para eso), así que se mantiene como lista fija.
@@ -342,33 +455,31 @@ export async function getCatalogoOpciones(tipo?: string) {
         ]
     }
 
-    const columnaPorTipo: Record<string, string> = {
-        elemento: "elemento",
-        unidad: "unidad",
-        categoria: "categoria",
-        sector: "sector",
+    const tablaPorTipo: Record<string, string> = {
+        elemento: "gestion_elementos",
+        unidad: "gestion_unidades",
+        categoria: "gestion_categorias",
+        sector: "gestion_sectores",
     }
-    const columna = columnaPorTipo[tipo || ""]
-    if (!columna) return []
+    const tabla = tablaPorTipo[tipo || ""]
+    if (!tabla) return []
 
     try {
         const { data, error } = await supabase
-            .from("catalogo_gestion")
-            .select(columna)
+            .from(tabla)
+            .select("id, nombre")
+            .order("nombre")
 
         if (error) {
-            console.error(`Error obteniendo catálogo (${tipo}):`, error)
+            // Si la migración aún no se corrió, la tabla no existe todavía —
+            // no romper el formulario, solo devolver lista vacía.
+            if (!/does not exist|relation .* does not exist/i.test(String(error.message || error))) {
+                console.error(`Error obteniendo catálogo (${tipo}):`, error)
+            }
             return []
         }
 
-        const valores = [...new Set(
-            (data || [])
-                .map((fila: any) => fila[columna])
-                .filter((v: any) => v !== null && v !== undefined && v !== "")
-        )].sort((a: any, b: any) => String(a).localeCompare(String(b)))
-
-        // id/nombre/codigo únicos y estables: el propio valor sirve de key.
-        return valores.map((valor) => ({ id: valor, nombre: valor, codigo: valor }))
+        return (data || []).map((fila: any) => ({ id: fila.id, nombre: fila.nombre, codigo: fila.nombre }))
     } catch (error) {
         console.error(`Error en getCatalogoOpciones(${tipo}):`, error)
         return []
