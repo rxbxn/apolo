@@ -53,26 +53,34 @@ export type VehiculoAmigo = {
     id: string
     coordinador_id: string
     placa: string
-    marca: string
-    modelo: string
-    color: string
-    tipo_vehiculo: string
+    marca?: string
+    modelo?: string
+    color?: string
+    tipo_vehiculo?: string
     propietario: string
-    telefono: string
+    telefono?: string
     fecha_registro: string
+    observaciones?: string
     coordinador?: { usuario: { nombres: string; apellidos: string } }
 }
 
+// Alineado con lo que vehiculo-amigo-form.tsx realmente envía y con lo que
+// createVehiculoAmigo/createPublicidadVehiculo insertan tal cual (sin
+// allowlist de columnas) — el tipo anterior tenía placa/estado/foto_url,
+// que no son campos que este formulario use, y le faltaban
+// medidas/ciudad_id/barrio_id/fecha_desinstalacion, que sí usa.
 export type PublicidadVehiculo = {
     id: string
     coordinador_id: string
-    placa: string
-    tipo_publicidad: string
+    tipo_publicidad?: string
+    medidas?: string
+    ciudad_id: string
+    barrio_id: string
     fecha_instalacion: string
-    fecha_retiro?: string
-    estado: string
-    foto_url?: string
+    fecha_desinstalacion?: string
     coordinador?: { usuario: { nombres: string; apellidos: string } }
+    ciudad?: { nombre: string }
+    barrio?: { nombre: string }
 }
 
 // --- Helpers ---
@@ -80,13 +88,34 @@ export type PublicidadVehiculo = {
 export async function getCoordinadoresForSelect() {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-    const { data, error } = await supabase
-        .from('coordinadores')
-        .select('id, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
-        .order('id') // Or order by name if possible, but nested ordering is tricky
+
+    // No filtraba por estado (mostraba coordinadores inactivos/dados de
+    // baja) y ordenaba por `id` en vez de por nombre. También marca cuáles
+    // de estos coordinadores son "dirigente" (coordinadores/dirigentes son
+    // el mismo tipo de registro en `coordinadores` — un coordinador es
+    // "dirigente" si aparece como id_dirigente en la tabla `dirigentes`,
+    // ver comentario en app/api/personas/importar-lote/route.ts), para que
+    // los selects de este módulo puedan mostrarlo.
+    const [{ data, error }, { data: rels, error: relsError }] = await Promise.all([
+        supabase
+            .from('coordinadores')
+            .select('id, tipo, estado, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
+            .eq('estado', 'activo'),
+        supabase.from('dirigentes').select('id_dirigente'),
+    ])
 
     if (error) throw new Error(error.message)
-    return data
+    if (relsError) console.error('Error obteniendo relaciones de dirigentes:', relsError)
+
+    const dirigenteIds = new Set((rels || []).map((r: any) => r.id_dirigente))
+
+    return (data || [])
+        .map((c: any) => ({ ...c, esDirigente: dirigenteIds.has(c.id) }))
+        .sort((a: any, b: any) => {
+            const nombreA = `${a.usuario?.nombres ?? ''} ${a.usuario?.apellidos ?? ''}`.trim()
+            const nombreB = `${b.usuario?.nombres ?? ''} ${b.usuario?.apellidos ?? ''}`.trim()
+            return nombreA.localeCompare(nombreB)
+        })
 }
 
 export async function getMilitantesByCoordinador(coordinadorId: string) {
@@ -97,9 +126,12 @@ export async function getMilitantesByCoordinador(coordinadorId: string) {
     // militantes del sistema sin importar qué coordinador se eligiera,
     // rompiendo la cascada Coordinador → Militante en Planillas, Casa
     // Estratégica e Inconsistencias.
+    // Se agrega la dirección/ciudad/barrio del usuario (vienen del Excel de
+    // Personas) para poder autocompletar esos campos en Casa Estratégica
+    // cuando se selecciona el militante, en vez de dejarlos vacíos.
     const { data, error } = await supabase
         .from('militantes')
-        .select('id, tipo, usuario:usuarios!militantes_usuario_id_fkey(nombres, apellidos)')
+        .select('id, tipo, usuario:usuarios!militantes_usuario_id_fkey(nombres, apellidos, direccion, ciudad_id, barrio_id)')
         .eq('coordinador_id', coordinadorId)
 
     if (error) throw new Error(error.message)

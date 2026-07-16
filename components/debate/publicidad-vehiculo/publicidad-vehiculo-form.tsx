@@ -30,11 +30,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { createPublicidadVehiculo, updatePublicidadVehiculo, type PublicidadVehiculo } from '@/lib/actions/debate'
+import { createPublicidadVehiculo, updatePublicidadVehiculo, getCoordinadoresForSelect, type PublicidadVehiculo } from '@/lib/actions/debate'
 import { getCiudades, getBarrios } from '@/lib/actions/configuracion'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 const formSchema = z.object({
     coordinador_id: z.string().uuid({ message: 'Selecciona un coordinador válido' }),
@@ -73,16 +72,20 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
         },
     })
 
+    // Antes usaba un query crudo del cliente contra `coordinadores` (con la
+    // clave anon, sujeto a RLS y sin manejo de error) en vez de la acción
+    // compartida — inconsistente con el resto del módulo y podía fallar en
+    // silencio. Ahora usa la misma getCoordinadoresForSelect() que
+    // Planillas/Inconsistencias/Casa Estratégica (filtra activos, ordena
+    // por nombre y marca quién es Dirigente).
     useEffect(() => {
         if (open) {
-            const fetchData = async () => {
-                const supabase = createClient()
-                const { data: coords } = await supabase
-                    .from('coordinadores')
-                    .select('id, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
-                if (coords) setCoordinadores(coords)
-            }
-            fetchData()
+            getCoordinadoresForSelect()
+                .then(setCoordinadores)
+                .catch((error) => {
+                    console.error('Error cargando coordinadores:', error)
+                    toast.error('Error al cargar coordinadores')
+                })
             getCiudades().then(setCiudades).catch(console.error)
         }
     }, [open])
@@ -143,7 +146,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Coordinador</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <Select onValueChange={field.onChange} value={field.value}>
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Selecciona un coordinador" />
@@ -152,7 +155,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                                         <SelectContent>
                                             {coordinadores.map((c) => (
                                                 <SelectItem key={c.id} value={c.id}>
-                                                    {c.usuario.nombres} {c.usuario.apellidos}
+                                                    {c.usuario.nombres} {c.usuario.apellidos}{c.esDirigente ? ' — Dirigente' : ''}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -169,7 +172,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Tipo Publicidad</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona tipo" />
@@ -207,7 +210,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Ciudad</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona una ciudad" />
@@ -231,7 +234,7 @@ export function PublicidadVehiculoForm({ publicidad, trigger }: PublicidadVehicu
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Barrio</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedCiudad}>
+                                        <Select onValueChange={field.onChange} value={field.value} disabled={!selectedCiudad}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un barrio" />

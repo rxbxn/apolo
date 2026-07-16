@@ -155,7 +155,7 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                         <Select onValueChange={(value) => {
                                             field.onChange(value)
                                             form.setValue('militante_id', '') // Reset militante when coordinador changes
-                                        }} defaultValue={field.value}>
+                                        }} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un coordinador" />
@@ -164,7 +164,7 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                             <SelectContent>
                                                 {coordinadores.map((c) => (
                                                     <SelectItem key={c.id} value={c.id}>
-                                                        {c.usuario.nombres} {c.usuario.apellidos}
+                                                        {c.usuario.nombres} {c.usuario.apellidos}{c.esDirigente ? ' — Dirigente' : ''}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -179,7 +179,41 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Militante</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedCoordinadorId}>
+                                        <Select
+                                            onValueChange={(value) => {
+                                                field.onChange(value)
+                                                // Autocompletar Ciudad/Barrio/Dirección con los
+                                                // datos del militante (vienen del Excel de
+                                                // Personas, en usuarios.ciudad_id/barrio_id/
+                                                // direccion) en vez de dejar que se llenen a
+                                                // mano cada vez. Diferido un tick para no pisar
+                                                // el cierre del Select de Militante (mismo
+                                                // problema de "removeChild" que en Gestión
+                                                // Gerencial si se hace en el mismo evento).
+                                                const militante = militantes.find((m) => m.id === value)
+                                                const usuario = militante?.usuario
+                                                if (!usuario) return
+                                                setTimeout(async () => {
+                                                    if (usuario.ciudad_id) {
+                                                        form.setValue('ciudad_id', usuario.ciudad_id)
+                                                        try {
+                                                            const barriosDeCiudad = await getBarrios(usuario.ciudad_id)
+                                                            setBarrios(barriosDeCiudad)
+                                                            if (usuario.barrio_id) {
+                                                                form.setValue('barrio_id', usuario.barrio_id)
+                                                            }
+                                                        } catch (error) {
+                                                            console.error('Error cargando barrios del militante:', error)
+                                                        }
+                                                    }
+                                                    if (usuario.direccion && !form.getValues('direccion')) {
+                                                        form.setValue('direccion', usuario.direccion)
+                                                    }
+                                                }, 0)
+                                            }}
+                                            value={field.value}
+                                            disabled={!selectedCoordinadorId}
+                                        >
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un militante" />
@@ -220,7 +254,7 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Ciudad</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona una ciudad" />
@@ -244,7 +278,7 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Barrio</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedCiudad}>
+                                        <Select onValueChange={field.onChange} value={field.value} disabled={!selectedCiudad}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un barrio" />
@@ -271,7 +305,7 @@ export function CasaEstrategicaForm({ casa, trigger }: CasaEstrategicaFormProps)
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Tipo Publicidad</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona tipo" />

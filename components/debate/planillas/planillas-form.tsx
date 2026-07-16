@@ -157,7 +157,7 @@ export function PlanillasForm({ planilla, trigger }: PlanillasFormProps) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Coordinador</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un coordinador" />
@@ -166,7 +166,7 @@ export function PlanillasForm({ planilla, trigger }: PlanillasFormProps) {
                                             <SelectContent>
                                                 {coordinadores.map((c) => (
                                                     <SelectItem key={c.id} value={c.id}>
-                                                        {c.usuario.nombres} {c.usuario.apellidos}
+                                                        {c.usuario.nombres} {c.usuario.apellidos}{c.esDirigente ? ' — Dirigente' : ''}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -181,7 +181,7 @@ export function PlanillasForm({ planilla, trigger }: PlanillasFormProps) {
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Militante</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedCoordinador}>
+                                        <Select onValueChange={field.onChange} value={field.value} disabled={!selectedCoordinador}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un militante" />

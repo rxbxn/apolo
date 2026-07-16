@@ -139,7 +139,7 @@ export function InconsistenciasForm({ inconsistencia, trigger }: Inconsistencias
                                         <Select onValueChange={(value) => {
                                             field.onChange(value)
                                             form.setValue('militante_id', '') // Reset militante when coordinador changes
-                                        }} defaultValue={field.value}>
+                                        }} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un coordinador" />
@@ -148,7 +148,7 @@ export function InconsistenciasForm({ inconsistencia, trigger }: Inconsistencias
                                             <SelectContent>
                                                 {coordinadores.map((c) => (
                                                     <SelectItem key={c.id} value={c.id}>
-                                                        {c.usuario.nombres} {c.usuario.apellidos}
+                                                        {c.usuario.nombres} {c.usuario.apellidos}{c.esDirigente ? ' — Dirigente' : ''}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -163,7 +163,7 @@ export function InconsistenciasForm({ inconsistencia, trigger }: Inconsistencias
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Militante</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!selectedCoordinadorId}>
+                                        <Select onValueChange={field.onChange} value={field.value} disabled={!selectedCoordinadorId}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona un militante" />

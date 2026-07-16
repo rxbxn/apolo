@@ -30,10 +30,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { createVehiculoAmigo, updateVehiculoAmigo, type VehiculoAmigo } from '@/lib/actions/debate'
+import { createVehiculoAmigo, updateVehiculoAmigo, getCoordinadoresForSelect, type VehiculoAmigo } from '@/lib/actions/debate'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 const formSchema = z.object({
     coordinador_id: z.string().uuid({ message: 'Selecciona un coordinador válido' }),
@@ -68,16 +67,20 @@ export function VehiculoAmigoForm({ vehiculo, trigger }: VehiculoAmigoFormProps)
         },
     })
 
+    // Antes usaba un query crudo del cliente contra `coordinadores` (con la
+    // clave anon, sujeto a RLS y sin manejo de error) en vez de la acción
+    // compartida — inconsistente con el resto del módulo y podía fallar en
+    // silencio. Ahora usa la misma getCoordinadoresForSelect() que
+    // Planillas/Inconsistencias/Casa Estratégica (filtra activos, ordena
+    // por nombre y marca quién es Dirigente).
     useEffect(() => {
         if (open) {
-            const fetchCoordinadores = async () => {
-                const supabase = createClient()
-                const { data } = await supabase
-                    .from('coordinadores')
-                    .select('id, usuario:usuarios!coordinadores_usuario_id_fkey(nombres, apellidos)')
-                if (data) setCoordinadores(data)
-            }
-            fetchCoordinadores()
+            getCoordinadoresForSelect()
+                .then(setCoordinadores)
+                .catch((error) => {
+                    console.error('Error cargando coordinadores:', error)
+                    toast.error('Error al cargar coordinadores')
+                })
         }
     }, [open])
 
@@ -128,7 +131,7 @@ export function VehiculoAmigoForm({ vehiculo, trigger }: VehiculoAmigoFormProps)
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Coordinador</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <Select onValueChange={field.onChange} value={field.value}>
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Selecciona un coordinador" />
@@ -137,7 +140,7 @@ export function VehiculoAmigoForm({ vehiculo, trigger }: VehiculoAmigoFormProps)
                                         <SelectContent>
                                             {coordinadores.map((c) => (
                                                 <SelectItem key={c.id} value={c.id}>
-                                                    {c.usuario.nombres} {c.usuario.apellidos}
+                                                    {c.usuario.nombres} {c.usuario.apellidos}{c.esDirigente ? ' — Dirigente' : ''}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
@@ -183,7 +186,7 @@ export function VehiculoAmigoForm({ vehiculo, trigger }: VehiculoAmigoFormProps)
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Tipo Vehículo</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl>
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Selecciona tipo" />
