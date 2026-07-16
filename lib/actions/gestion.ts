@@ -209,7 +209,7 @@ export async function getMilitantesActivos() {
     try {
         const { data, error } = await supabase
             .from("militantes")
-            .select("id, usuarios!militantes_usuario_id_fkey(nombres, apellidos, numero_documento)")
+            .select("id, coordinador_id, dirigente_id, usuarios!militantes_usuario_id_fkey(nombres, apellidos, numero_documento)")
             .eq("estado", "activo")
 
         if (error) {
@@ -217,13 +217,17 @@ export async function getMilitantesActivos() {
             return []
         }
 
-        // Transformar los datos al formato que espera el componente
+        // Transformar los datos al formato que espera el componente.
+        // coordinador_id/dirigente_id se incluyen para poder autocompletar
+        // esos campos cuando se selecciona un militante en Gestión Gerencial.
         return (data || []).map((militante: any) => ({
             id: militante.id,
-            nombre: militante.usuarios ? 
-                `${militante.usuarios.nombres} ${militante.usuarios.apellidos}` : 
+            nombre: militante.usuarios ?
+                `${militante.usuarios.nombres} ${militante.usuarios.apellidos}` :
                 'Usuario desconocido',
-            documento: militante.usuarios?.numero_documento || 'Sin documento'
+            documento: militante.usuarios?.numero_documento || 'Sin documento',
+            coordinador_id: militante.coordinador_id || null,
+            dirigente_id: militante.dirigente_id || null,
         }))
     } catch (error) {
         console.error("Error en getMilitantesActivos:", error)
@@ -261,117 +265,112 @@ export async function getCoordinadoresActivos() {
     }
 }
 
-// Obtener dirigentes (son coordinadores con perfil dirigente)
+// Obtener dirigentes: un "dirigente" en este sistema es cualquier
+// coordinador que aparece como id_dirigente en la tabla `dirigentes` (es
+// decir, tiene al menos un coordinador que reporta a él). Antes esto se
+// adivinaba filtrando coordinadores.tipo === 'dirigente' (imposible: el
+// CHECK de esa columna solo admite 'Coordinador'/'Estructurador') o
+// perfiles.nombre === 'Dirigente' (depende de un perfil de permisos RBAC
+// que puede no existir) — cuando fallaba, devolvía dirigentes inventados
+// ("Dirigente Temporal 1/2" con ids "temp-1"/"temp-2" que ni siquiera son
+// UUID). Se quitaron esos fallbacks: si no hay dirigentes reales, la lista
+// simplemente viene vacía.
 export async function getDirigentes() {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
     try {
+        const { data: rels, error: relsError } = await supabase
+            .from("dirigentes")
+            .select("id_dirigente")
+
+        if (relsError) {
+            console.error("Error obteniendo relaciones de dirigentes:", relsError)
+            return []
+        }
+
+        const dirigenteIds = [...new Set((rels || []).map((r: any) => r.id_dirigente).filter(Boolean))]
+        if (dirigenteIds.length === 0) return []
+
         const { data, error } = await supabase
             .from("coordinadores")
-            .select(`
-                id, 
-                tipo,
-                usuario_id,
-                perfil_id,
-                usuarios!coordinadores_usuario_id_fkey(nombres, apellidos, email),
-                perfiles!coordinadores_perfil_id_fkey(nombre)
-            `)
-            .eq("estado", "activo")
+            .select("id, usuarios!coordinadores_usuario_id_fkey(nombres, apellidos, email)")
+            .in("id", dirigenteIds)
 
         if (error) {
             console.error("Error obteniendo dirigentes:", error)
-            return [
-                { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente General" },
-                { id: "temp-2", nombre: "Dirigente Temporal 2", perfil_nombre: "Dirigente Regional" }
-            ]
+            return []
         }
 
-        // Filtrar por perfil "Dirigente" y transformar los datos
-        const dirigentes = (data || [])
-            .filter((coordinador: any) => 
-                coordinador.perfiles?.nombre === "Dirigente" || 
-                coordinador.tipo === "dirigente"
-            )
-            .map((dirigente: any) => ({
-                id: dirigente.id,
-                nombre: dirigente.usuarios ? 
-                    `${dirigente.usuarios.nombres} ${dirigente.usuarios.apellidos}` : 
-                    'Usuario desconocido',
-                perfil_nombre: dirigente.perfiles?.nombre || 'Dirigente'
-            }))
-
-        // Si no hay dirigentes, devolver datos temporales
-        if (dirigentes.length === 0) {
-            return [
-                { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente" }
-            ]
-        }
-
-        return dirigentes
+        return (data || []).map((dirigente: any) => ({
+            id: dirigente.id,
+            nombre: dirigente.usuarios ?
+                `${dirigente.usuarios.nombres} ${dirigente.usuarios.apellidos}` :
+                'Usuario desconocido',
+            perfil_nombre: 'Dirigente',
+        }))
     } catch (error) {
         console.error("Error en getDirigentes:", error)
-        return [
-            { id: "temp-1", nombre: "Dirigente Temporal 1", perfil_nombre: "Dirigente General" }
-        ]
+        return []
     }
 }
 
-// Obtener opciones del catálogo
+// Obtener opciones del catálogo.
+//
+// La tabla real `catalogo_gestion` es plana: una fila = un ítem completo
+// (id, elemento, unidad, categoria, sector, creado_en) — NO una fila por
+// combinación (tipo, valor) como asumía el diseño anterior (ese diseño
+// normalizado con columnas tipo/codigo/nombre fue reemplazado, ver
+// schema_apolo_v2.sql). Antes esta función ignoraba por completo el
+// parámetro `tipo` y devolvía SIEMPRE la tabla entera sin filtrar; el
+// formulario luego leía `.nombre`/`.codigo` (columnas que no existen en la
+// tabla real), así que cada SelectItem terminaba con value=undefined —
+// eso disparaba el warning de "key" duplicada de React dentro del <select>
+// oculto que usa Radix para espejar el valor en un <select> nativo.
+//
+// "tipo_gestion" no tiene tabla catálogo real en el schema vigente (no hay
+// admin ni columna para eso), así que se mantiene como lista fija.
 export async function getCatalogoOpciones(tipo?: string) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
+    if (tipo === 'tipo_gestion') {
+        return [
+            { id: "TG001", codigo: "TG001", nombre: "Gestión Administrativa" },
+            { id: "TG002", codigo: "TG002", nombre: "Gestión Operativa" },
+            { id: "TG003", codigo: "TG003", nombre: "Gestión de Comunicación" },
+        ]
+    }
+
+    const columnaPorTipo: Record<string, string> = {
+        elemento: "elemento",
+        unidad: "unidad",
+        categoria: "categoria",
+        sector: "sector",
+    }
+    const columna = columnaPorTipo[tipo || ""]
+    if (!columna) return []
+
     try {
         const { data, error } = await supabase
             .from("catalogo_gestion")
-            .select("*")
+            .select(columna)
 
         if (error) {
-            console.error("Error obteniendo catálogo:", error)
-            // Fallback: crear datos de prueba basados en el tipo solicitado
-            if (tipo === 'elemento') {
-                return [
-                    { id: "1", elemento: "Computadora", unidad: "Unidades", sector: "Tecnología" },
-                    { id: "2", elemento: "Teléfono", unidad: "Unidades", sector: "Comunicación" },
-                    { id: "3", elemento: "Impresora", unidad: "Unidades", sector: "Oficina" }
-                ]
-            }
-            if (tipo === 'unidad') {
-                return [
-                    { id: "1", nombre: "Unidades" },
-                    { id: "2", nombre: "Cajas" },
-                    { id: "3", nombre: "Paquetes" }
-                ]
-            }
-            if (tipo === 'categoria') {
-                return [
-                    { id: "1", nombre: "Tecnología" },
-                    { id: "2", nombre: "Oficina" },
-                    { id: "3", nombre: "Logística" }
-                ]
-            }
-            if (tipo === 'sector') {
-                return [
-                    { id: "1", nombre: "Administración" },
-                    { id: "2", nombre: "Operaciones" },
-                    { id: "3", nombre: "Comunicación" }
-                ]
-            }
-            if (tipo === 'tipo_gestion') {
-                return [
-                    { id: "TG001", nombre: "Gestión Administrativa" },
-                    { id: "TG002", nombre: "Gestión Operativa" },
-                    { id: "TG003", nombre: "Gestión de Comunicación" }
-                ]
-            }
+            console.error(`Error obteniendo catálogo (${tipo}):`, error)
             return []
         }
 
-        // Si no hay error, retornar todos los datos
-        return data || []
+        const valores = [...new Set(
+            (data || [])
+                .map((fila: any) => fila[columna])
+                .filter((v: any) => v !== null && v !== undefined && v !== "")
+        )].sort((a: any, b: any) => String(a).localeCompare(String(b)))
+
+        // id/nombre/codigo únicos y estables: el propio valor sirve de key.
+        return valores.map((valor) => ({ id: valor, nombre: valor, codigo: valor }))
     } catch (error) {
-        console.error("Error en getCatalogoOpciones:", error)
+        console.error(`Error en getCatalogoOpciones(${tipo}):`, error)
         return []
     }
 }

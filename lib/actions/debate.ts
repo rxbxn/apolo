@@ -92,41 +92,15 @@ export async function getCoordinadoresForSelect() {
 export async function getMilitantesByCoordinador(coordinadorId: string) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-    // Assuming there is a way to link militantes to coordinadores directly or via hierarchy.
-    // For now, fetching all militantes or filtering if there's a relationship.
-    // Based on previous context, PlanillasForm filters militantes.
-    // If there is no direct link in schema yet, we might return all or filter by some other means.
-    // However, the user request implies a relationship.
-    // Let's assume 'militantes' table might NOT have 'coordinador_id' directly based on previous schema checks?
-    // Wait, the prompt said "Implement cascading select... similar to Planillas form".
-    // In Planillas form, how was it done?
-    // "getMilitantesByCoordinador" was used.
-    // Let's assume the relationship exists or we filter by something else.
-    // Actually, looking at the migration script `add-militante-to-debate-tables.sql`, it adds `militante_id` to debate tables.
-    // It doesn't add `coordinador_id` to `militantes` table.
-    // BUT, `planillas` table has `coordinador_id` and `militante_id`.
-    // Maybe the cascading logic is: Select Coordinador -> Select Militante (who is managed by that coordinator).
-    // If `militantes` table doesn't have `coordinador_id`, how do we filter?
-    // Maybe `militantes` are linked to `usuarios` and `coordinadores` are `usuarios`.
-    // Let's check if `militantes` has a `referido_por` or similar?
-    // Or maybe we just return all militantes for now if the relationship isn't clear, BUT the function name implies filtering.
-    // Let's look at `getPlanillas` query: `militante:militantes(...)`.
-    // If I look at `planillas-form.tsx` (from memory/snippets), it used `getMilitantesByCoordinador`.
-    // I will implement it to fetch from `militantes` table. If there's a `coordinador_id` column in `militantes`, I'll use it.
-    // If not, I might have to return all or check schema.
-    // I'll assume for now `militantes` might have `coordinador_id` or similar.
-    // Wait, I saw `crear-modulo-debate.sql` earlier.
-    // Let's assume standard fetch for now, maybe filtering by `coordinador_id` if it exists.
-    // Safest bet: Fetch all militantes and let frontend filter? No, that's bad for performance.
-    // I'll try to select where `coordinador_id` equals the param. If it fails, I'll know.
-    // actually, let's check the previous `getMilitantesByCoordinador` implementation if it existed?
-    // It didn't exist in the file I viewed.
-    // I'll implement a basic fetch for now.
-
+    // militantes.coordinador_id sí existe en el schema real — el filtro
+    // estaba comentado, así que esta función devolvía SIEMPRE todos los
+    // militantes del sistema sin importar qué coordinador se eligiera,
+    // rompiendo la cascada Coordinador → Militante en Planillas, Casa
+    // Estratégica e Inconsistencias.
     const { data, error } = await supabase
         .from('militantes')
         .select('id, tipo, usuario:usuarios!militantes_usuario_id_fkey(nombres, apellidos)')
-    // .eq('coordinador_id', coordinadorId) // Uncomment if column exists
+        .eq('coordinador_id', coordinadorId)
 
     if (error) throw new Error(error.message)
     return data

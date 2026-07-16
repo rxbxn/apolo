@@ -554,46 +554,24 @@ export function useCoordinadores() {
         }
     }, [])
 
-    const buscarPorPerfil = useCallback(async (perfilNombre: string, termino?: string) => {
+    const buscarPorPerfil = useCallback(async (tipoCoordinador: string, termino?: string) => {
         try {
             setLoading(true)
             setError(null)
 
-            // Obtener id del perfil. Primero intentar nombre exacto, si no existe intentar una búsqueda parcial (ilike)
-            let perfilId: any = null
-
-            const { data: perfilExact, error: perfilExactErr } = await supabase
-                .from('perfiles')
-                .select('id')
-                .eq('nombre', perfilNombre)
-                .limit(1)
-                .maybeSingle()
-
-            if (!perfilExactErr && perfilExact) {
-                perfilId = (perfilExact as any).id
-            } else {
-                // Fallback: buscar nombres que contengan la palabra (caso-insensible)
-                const { data: perfilLike, error: perfilLikeErr } = await supabase
-                    .from('perfiles')
-                    .select('id, nombre')
-                    .ilike('nombre', `%${perfilNombre}%`)
-                    .limit(1)
-                    .maybeSingle()
-
-                if (!perfilLikeErr && perfilLike) {
-                    perfilId = (perfilLike as any).id
-                }
-            }
-
-            if (!perfilId) {
-                console.warn(`Perfil '${perfilNombre}' no encontrado (ni exacto ni parcial).`)
-                return []
-            }
-
+            // A pesar del nombre histórico de esta función, filtra por
+            // `coordinadores.tipo` ('Coordinador' | 'Estructurador' — el rol
+            // real de la jerarquía), NO por un perfil de permisos RBAC.
+            // Antes buscaba en la tabla `perfiles` un perfil llamado
+            // "Coordinador" y filtraba por perfil_id — eso es el catálogo de
+            // permisos, una cosa aparte, y si ningún coordinador real tenía
+            // ese perfil de permisos asignado (perfectamente normal: pueden
+            // no tener perfil, o tener otro), el combo quedaba vacío aunque
+            // sí hubiera coordinadores.
             let query = supabase
                 .from('v_coordinadores_completo')
-                .select('coordinador_id, nombres, apellidos, email, perfil_id')
-                .eq('perfil_id', perfilId)
+                .select('coordinador_id, nombres, apellidos, email, tipo')
+                .eq('tipo', tipoCoordinador)
                 .limit(50)
 
             if (termino && termino.length > 0) {
@@ -618,34 +596,30 @@ export function useCoordinadores() {
             setLoading(true)
             setError(null)
 
-            // 1. Obtener el ID del perfil 'Dirigente' (case-insensitive)
-            const { data: perfilesList, error: perfilError } = await supabase
-                .from('perfiles')
-                .select('id, nombre')
-                .ilike('nombre', 'dirigente')
+            // Un "dirigente" es cualquier coordinador que aparece como
+            // id_dirigente en la tabla `dirigentes` (tiene al menos un
+            // coordinador que le reporta). Antes esto se adivinaba con un
+            // perfil de permisos RBAC llamado "Dirigente" que puede no
+            // existir — cuando no existía, el fallback mostraba TODOS los
+            // coordinadores como candidatos a dirigente, lo cual no tiene
+            // sentido en una pantalla que sirve justo para asignar quién es
+            // dirigente de quién.
+            const { data: rels, error: relsError } = await supabase
+                .from('dirigentes')
+                .select('id_dirigente')
 
-            if (perfilError) {
-                console.warn('Error buscando perfil Dirigente:', perfilError)
+            if (relsError) {
+                console.error('Error obteniendo relaciones de dirigentes:', relsError)
+                return []
             }
 
-            const dirigentePerfilId = perfilesList && perfilesList.length > 0 ? (perfilesList[0] as any).id : null
+            const dirigenteIds = [...new Set((rels ?? []).map((r: any) => r.id_dirigente).filter(Boolean))]
+            if (dirigenteIds.length === 0) return []
 
-            if (!dirigentePerfilId) {
-                console.warn("El perfil 'Dirigente' no fue encontrado en la tabla perfiles. Mostrando todos los coordinadores como opción.")
-                // Fallback: devolver todos los coordinadores (a los puede elegirse como dirigente)
-                const { data: allCoords, error: allErr } = await supabase
-                    .from('v_coordinadores_completo')
-                    .select('coordinador_id, nombres, apellidos, perfil_id')
-                    .limit(200)
-                if (allErr) { console.error('Error fallback dirigentes:', allErr); return [] }
-                return allCoords || []
-            }
-
-            // 2. Buscar todos los coordinadores con perfil Dirigente
             const { data, error: queryError } = await supabase
                 .from('v_coordinadores_completo')
                 .select('coordinador_id, nombres, apellidos, perfil_id')
-                .eq('perfil_id', dirigentePerfilId)
+                .in('coordinador_id', dirigenteIds)
 
             if (queryError) throw queryError
 

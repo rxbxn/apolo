@@ -372,7 +372,18 @@ export function GestionFormNew({ initialData, isEditing = false }: GestionFormPr
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Militante</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
+                                    <Select
+                                        onValueChange={(value) => {
+                                            field.onChange(value)
+                                            // Al elegir un militante, autocompletar el
+                                            // Coordinador y Dirigente que ya tiene asignados
+                                            // (militantes.coordinador_id / dirigente_id).
+                                            const militante = militantes.find((m) => m.id === value)
+                                            form.setValue('coordinador_id', militante?.coordinador_id || "")
+                                            form.setValue('dirigente_id', militante?.dirigente_id || "")
+                                        }}
+                                        value={field.value}
+                                    >
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Seleccionar militante" />
