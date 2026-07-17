@@ -23,10 +23,14 @@ export async function GET(request: Request) {
             .order("nivel_jerarquico", { ascending: true })
         if (perfilesError) return NextResponse.json({ error: perfilesError.message }, { status: 500 })
 
-        // Usuarios con paginación
+        // Usuarios con paginación. Solo se muestran los que ya tienen cuenta
+        // de acceso (auth_user_id) — a este usuario ya se le puede asignar o
+        // cambiar el rol. Para habilitar el acceso de alguien nuevo se usa el
+        // flujo del módulo correspondiente (p. ej. Coordinador), no esta lista.
         let query = supabase
             .from("usuarios")
             .select("id, nombres, apellidos, email, auth_user_id, estado, numero_documento", { count: 'exact' })
+            .not("auth_user_id", "is", null)
             .order("nombres", { ascending: true })
 
         if (search) {

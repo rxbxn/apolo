@@ -226,6 +226,11 @@ export function useCoordinadores() {
                 creado_en: coordData.creado_en,
                 actualizado_en: coordData.actualizado_en,
                 incomplete: !usuarioInfo,
+                // coordinadores.password (texto plano, a petición del equipo)
+                // ya venía en coordData por el select('*'), pero no se estaba
+                // incluyendo aquí — por eso el formulario de edición nunca
+                // mostraba la contraseña guardada.
+                password: coordData.password || null,
             }
 
             return coordinador as Coordinador
@@ -420,8 +425,17 @@ export function useCoordinadores() {
                 .single()
 
             if (updateError) {
-                console.error('Error actualizando coordinador:', updateError)
-                throw new Error(updateError.message || 'Error al actualizar coordinador')
+                // El objeto PostgrestError no siempre serializa bien en el
+                // overlay de Next (a veces se ve como "{}"); se loguean los
+                // campos explícitos para poder ver el error real.
+                console.error('❌ Error actualizando coordinador:')
+                console.error('- Código:', updateError.code)
+                console.error('- Mensaje:', updateError.message)
+                console.error('- Detalles:', updateError.details)
+                console.error('- Hint:', updateError.hint)
+                console.error('- Payload enviado:', coordinadorData)
+                console.error('- ID:', id)
+                throw new Error(updateError.message || `Error al actualizar coordinador (código: ${updateError.code || 'desconocido'})`)
             }
 
             console.log('✅ Coordinador actualizado exitosamente:', coordinadorActualizado)

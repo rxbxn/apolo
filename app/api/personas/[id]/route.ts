@@ -3,10 +3,12 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    // Next.js 15+: params es una Promise, hay que resolverla antes de leer
+    // sus propiedades (si no, id llega undefined y esta ruta nunca funciona).
+    const { id } = await params
 
     if (!id) {
       return NextResponse.json(

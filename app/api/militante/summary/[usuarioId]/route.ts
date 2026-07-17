@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 
-export async function GET(request: Request, { params }: { params: { usuarioId: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ usuarioId: string }> }) {
+  // Next.js 15+: params es una Promise, hay que resolverla antes de leer
+  // sus propiedades (si no, usuarioId llega undefined).
+  const resolvedParams = await params
   // Normalize and validate usuarioId param
-  let { usuarioId } = params
+  let { usuarioId } = resolvedParams
   // If params is empty (Next might not populate in some environments), try extract from path
   if (!usuarioId) {
     try {
@@ -24,9 +27,9 @@ export async function GET(request: Request, { params }: { params: { usuarioId: s
   // Simple UUID validator available for subsequent lookups
   const isUuid = (v: any) => typeof v === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v)
     if (!usuarioId || usuarioId.toLowerCase() === 'undefined' || usuarioId.toLowerCase() === 'null' || !uuidRegex.test(usuarioId)) {
-      console.warn('GET /api/militante/summary - invalid usuarioId:', params)
+      console.warn('GET /api/militante/summary - invalid usuarioId:', resolvedParams)
       if (process.env.NODE_ENV === 'development') {
-        return NextResponse.json({ error: `usuarioId no tiene formato UUID válido: ${String(params?.usuarioId)}`, params }, { status: 400 })
+        return NextResponse.json({ error: `usuarioId no tiene formato UUID válido: ${String(resolvedParams?.usuarioId)}`, params: resolvedParams }, { status: 400 })
       }
       return NextResponse.json({ error: `usuarioId no tiene formato UUID válido` }, { status: 400 })
     }

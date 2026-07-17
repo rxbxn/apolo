@@ -27,7 +27,7 @@ export function TopNav() {
   }
 
   return (
-    <nav className="h-16 border-b border-border bg-card flex items-center justify-between px-6">
+    <nav className="h-16 border-b border-border bg-card flex items-center justify-between px-3 sm:px-6">
       <div className="flex items-center gap-4">
         <h2 className="text-lg font-semibold text-foreground">Panel de Control</h2>
       </div>

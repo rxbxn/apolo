@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 
-export async function POST(request: NextRequest, { params }: { params: { id: string | string[] } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string | string[] }> }) {
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
@@ -14,8 +14,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
             return NextResponse.json({ error: 'Error de configuración del servidor' }, { status: 500 })
         }
 
+        // Next.js 15+: `params` es una Promise y hay que resolverla antes de
+        // leer sus propiedades (si no, tira "params.id used before await" y
+        // el id llega undefined — esto rompía la creación automática de
+        // usuario de Auth al editar coordinador).
+        const resolvedParams = await params
         // Normalize/sanitize id param
-        const rawId = params?.id
+        const rawId = resolvedParams?.id
         let id = Array.isArray(rawId) ? rawId[0] : rawId
         id = typeof id === 'string' ? id.trim().replace(/^"|"$/g, '') : String(id || '')
 
@@ -28,21 +33,40 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         // Verificar permiso ADMIN
         try {
             const { data: sessionData } = await supabase.auth.getSession()
-            const authUserId = sessionData?.session?.user?.id
-            if (!authUserId) {
+            const requestUserId = sessionData?.session?.user?.id
+            if (!requestUserId) {
                 return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
             }
 
-            const { data: usuarioRow } = await supabase.from('usuarios').select('id').eq('auth_user_id', authUserId).single()
+            const { data: usuarioRow } = await supabase.from('usuarios').select('id').eq('auth_user_id', requestUserId).single()
             if (!usuarioRow) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-            const { data: permiso } = await supabase.rpc('tiene_permiso', {
-                p_usuario_id: (usuarioRow as any).id,
-                p_modulo_nombre: 'Módulo Coordinador',
-                p_permiso_codigo: 'ADMIN',
-            })
+            // Bypass para Super Admin, igual que en el resto de la app
+            // (obtenerPermisosCRUD en el cliente ya lo hace así). Sin esto,
+            // un Super Admin cuyo perfil no tenga filas explícitas en
+            // perfil_permiso_modulo para "Módulo Coordinador" quedaba
+            // bloqueado aquí por la RPC tiene_permiso, aunque en el resto de
+            // la interfaz se le trate como acceso total — esto hacía que
+            // "Crear usuario en Auth" fallara en silencio (403) incluso para
+            // el admin del sistema.
+            const { data: perfilesUsuario } = await adminClient
+                .from('usuario_perfil')
+                .select('perfiles(nombre)')
+                .eq('usuario_id', (usuarioRow as any).id)
+                .eq('activo', true)
+            const esSuperAdmin = (perfilesUsuario || []).some(
+                (p: any) => p.perfiles && typeof p.perfiles.nombre === 'string' && p.perfiles.nombre.toLowerCase() === 'super admin'
+            )
 
-            if (!permiso) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+            if (!esSuperAdmin) {
+                const { data: permiso } = await supabase.rpc('tiene_permiso', {
+                    p_usuario_id: (usuarioRow as any).id,
+                    p_modulo_nombre: 'Módulo Coordinador',
+                    p_permiso_codigo: 'ADMIN',
+                })
+
+                if (!permiso) return NextResponse.json({ error: 'No tienes permiso de administrador en el Módulo Coordinador para crear cuentas de acceso' }, { status: 403 })
+            }
         } catch (e) {
             console.error('Error verificando permisos:', e)
             return NextResponse.json({ error: 'No autorizado' }, { status: 403 })

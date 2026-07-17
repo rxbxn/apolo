@@ -5,14 +5,17 @@ import { cookies } from 'next/headers'
 // Shared UUID regex used for validating UUID inputs
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function GET(request: NextRequest, { params }: { params: { id: string | string[] } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string | string[] }> }) {
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
 
+        // Next.js 15+: params es una Promise, hay que resolverla antes de
+        // leer sus propiedades.
+        const resolvedParams = await params
         // Normalize/sanitize id param (handle arrays, quoted values, 'undefined' literal, etc.)
-        let rawId = params?.id
-        console.debug('GET /api/coordinador/[id] request url:', request.url, 'raw params:', params)
+        let rawId = resolvedParams?.id
+        console.debug('GET /api/coordinador/[id] request url:', request.url, 'raw params:', resolvedParams)
 
         // Fallback: si no viene en params, intentar extraer del path de la request
         if (!rawId) {
@@ -148,6 +151,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             actualizado_en: coordRow.actualizado_en,
             // marcar si la fila viene sin usuario relacionado
             incomplete: !usuarioInfo,
+            // coordinadores.password: columna en texto plano, a petición
+            // explícita del equipo, para poder consultar la contraseña de un
+            // coordinador desde este formulario. Ya estaba en producción
+            // (POST /api/coordinador la escribe desde su creación); antes el
+            // GET no la exponía, dejando el botón "ver contraseña" sin nada
+            // que mostrar.
+            password: coordRow.password || null,
         }
 
         // Intentar obtener auth_user_id si es posible (adminClient preferido). No exponemos contraseñas.
@@ -177,7 +187,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string | string[] } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string | string[] }> }) {
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
@@ -189,8 +199,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             adminClient = null
         }
 
+        // Next.js 15+: params es una Promise, hay que resolverla antes de
+        // leer sus propiedades.
+        const resolvedParams = await params
         // Normalize/sanitize id param
-        const rawId = params?.id
+        const rawId = resolvedParams?.id
         let id = Array.isArray(rawId) ? rawId[0] : rawId
         id = typeof id === 'string' ? id.trim().replace(/^"|"$/g, '') : String(id || '')
 
@@ -234,6 +247,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         // Si se proporcionó password y no está vacío, actualizar primero en Auth (si existe auth_user_id)
         // Nota: eliminada la restricción de permisos; la API permitirá actualizar el campo password.
         if (typeof password === 'string' && password.trim() !== '') {
+            // La creación (POST /api/coordinador) ya guarda la contraseña en
+            // texto plano en coordinadores.password (columna que existe en
+            // paralelo a Supabase Auth, por decisión explícita del equipo).
+            // La edición no la actualizaba, dejando la columna desincronizada
+            // con la contraseña real tras un cambio — se corrige aquí.
+            updateData.password = password
 
             // Obtener auth_user_id y email del coordinador usando adminClient para evitar problemas de RLS
             // Solo intentamos operaciones en Auth si tenemos adminClient
@@ -282,7 +301,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                         return NextResponse.json({ error: 'Error actualizando la contraseña en Auth' }, { status: 500 })
                     }
 
-                    // No se almacena la contraseña en la tabla por razones de seguridad. Solo persistimos auth_user_id.
                 } else {
                     // No existe auth_user_id: intentar crear el usuario en Auth o vincular uno existente
                     try {
@@ -338,7 +356,6 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                             authAction = { action: 'created', auth_user_id: createdAuthUserId ?? undefined }
                         }
 
-                        // No se almacena la contraseña en la tabla por razones de seguridad. Sólo persistimos auth_user_id.
                     } catch (e) {
                         console.error('Error creando usuario en Auth durante PATCH:', e)
                         return NextResponse.json({ error: 'Error creando usuario en Auth' }, { status: 500 })
@@ -408,14 +425,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string | string[] } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string | string[] }> }) {
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
         const adminClient = createAdminClient()
 
+        // Next.js 15+: params es una Promise, hay que resolverla antes de
+        // leer sus propiedades.
+        const resolvedParams = await params
         // Normalize/sanitize email param
-        const rawEmail = params?.id
+        const rawEmail = resolvedParams?.id
         let email = Array.isArray(rawEmail) ? rawEmail[0] : rawEmail
         email = typeof email === 'string' ? email.trim().replace(/^"|"$/g, '') : String(email || '')
         

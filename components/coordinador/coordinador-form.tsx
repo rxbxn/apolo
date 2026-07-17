@@ -103,19 +103,26 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
 
     const { permisos } = usePermisos("Módulo Coordinador")
     const [authUserId, setAuthUserId] = useState<string | null>(initialData?.auth_user_id || null)
-    const [creatingAuthUser, setCreatingAuthUser] = useState(false)
 
     // Mostrar / ocultar contraseña en el input
     const [showPassword, setShowPassword] = useState(false)
+    // Contraseña actual guardada en coordinadores.password (texto plano),
+    // para poder mostrarla. Se guarda aparte del campo del formulario para
+    // no confundirla con "escribir una contraseña nueva": el input de
+    // contraseña sigue arrancando vacío, así "dejar en blanco = mantener
+    // actual" sigue funcionando igual que antes.
+    const [showContrasenaActual, setShowContrasenaActual] = useState(false)
 
     // Si `initialData` cambia (llega desde la API), resetear los valores del formulario
     useEffect(() => {
         if (initialData) {
-            // Asegura que el campo password se resetea si viene desde la API
+            // El campo password SIEMPRE arranca vacío al editar: es para
+            // definir una contraseña nueva, no para mostrar la actual (esa
+            // se muestra aparte, ver "Contraseña actual" más abajo).
             reset({
                 usuario_id: initialData.usuario_id || '',
                 email: initialData.email || '',
-                password: initialData.password || '',
+                password: '',
                 perfil_id: initialData.perfil_id || '',
                 referencia_coordinador_id: initialData.referencia_coordinador_id || '',
                 tipo: initialData.tipo || 'Coordinador',
@@ -124,36 +131,43 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
         }
     }, [initialData, reset])
 
-    async function handleToggleShowPassword() {
-        // Mostrar u ocultar contraseña (sin restricción de permisos en frontend)
-        const currentPassword = getValues('password')
-        if ((!currentPassword || currentPassword === '') && isEditing && initialData?.coordinador_id) {
-            // Validar el formato del coordinador_id antes de llamar a la API
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-            // Sanitizar coordinador_id
-            const rawId = initialData.coordinador_id
-            const sanitizedId = typeof rawId === 'string' ? rawId.trim().replace(/^"|"$/g, '') : String(rawId || '')
-            if (!uuidRegex.test(sanitizedId)) {
-                console.warn('Coordinador ID inválido, omitiendo petición de contraseña:', initialData.coordinador_id)
-            } else {
-                // Intentar obtener la contraseña del servidor (si no viene pre-cargada)
-                try {
-                    const res = await fetch(`/api/coordinador/${sanitizedId}`)
-                    if (res.ok) {
-                        const data = await res.json()
-                        if (data.password) {
-                            setValue('password', data.password)
-                        }
-                    } else if (res.status === 403) {
-                        toast.error('No autorizado para ver la contraseña')
-                    }
-                } catch (e) {
-                    console.warn('No se pudo obtener la contraseña desde el servidor:', e)
-                }
-            }
-        }
-
+    function handleToggleShowPassword() {
+        // Alterna mostrar/ocultar lo que se está escribiendo AHORA en el
+        // campo de contraseña nueva (comportamiento estándar de cualquier
+        // input de contraseña).
         setShowPassword(prev => !prev)
+    }
+
+    const [sincronizando, setSincronizando] = useState(false)
+
+    async function handleSincronizarPassword() {
+        // Corrige coordinadores cuya cuenta de Auth quedó con una contraseña
+        // distinta a la que se ve en "Contraseña actual" (por ejemplo, cuentas
+        // creadas antes del fix que evitaba contraseñas aleatorias ocultas).
+        // Reenvía la contraseña YA guardada, pero contra el endpoint PATCH del
+        // servidor — es el único con permisos de administrador para tocar
+        // Supabase Auth; el hook actualizar() solo escribe en la tabla desde
+        // el navegador y no puede sincronizar Auth.
+        if (!initialData?.coordinador_id || !initialData?.password) return
+        setSincronizando(true)
+        try {
+            const res = await fetch(`/api/coordinador/${initialData.coordinador_id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: initialData.password }),
+            })
+            const resData = await res.json()
+            if (!res.ok) {
+                throw new Error(resData?.error || 'Error sincronizando la contraseña con Auth')
+            }
+            if (resData?.auth_user_id) setAuthUserId(resData.auth_user_id)
+            toast.success("Contraseña sincronizada con Auth. Ya puedes iniciar sesión con ella.")
+        } catch (e) {
+            console.error('Error sincronizando contraseña con Auth:', e)
+            toast.error(e instanceof Error ? e.message : "Error sincronizando la contraseña con Auth")
+        } finally {
+            setSincronizando(false)
+        }
     }
 
     const usuario_id = watch("usuario_id")
@@ -244,36 +258,67 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
             setSubmitting(true)
 
             if (isEditing && initialData?.coordinador_id) {
-                const updatePayload: any = {
-                    perfil_id: data.perfil_id,
-                    referencia_coordinador_id: data.referencia_coordinador_id,
+                // IMPORTANTE: perfil_id y referencia_coordinador_id son columnas UUID.
+                // Si llegan como '' (string vacío, valor por defecto de reset() cuando
+                // initialData no trae el dato — ver línea ~99/120), Postgres rechaza el
+                // update con "invalid input syntax for type uuid" y el PostgrestError
+                // resultante se ve como "{}" en el overlay de Next. Se sanitiza a
+                // null igual que ya se hace en la rama de creación (línea ~288).
+                if (data.password && data.password.trim() !== '' && !permisos?.administrar) {
+                    setError('password', { type: 'manual', message: 'No tienes permisos para cambiar la contraseña' })
+                    setSubmitting(false)
+                    return
+                }
+
+                // IMPORTANTE: los campos normales (perfil, referencia, tipo) se
+                // guardan con actualizar(), que escribe directo a la tabla desde
+                // el navegador con la sesión del usuario. Ese camino NO puede
+                // tocar Supabase Auth (eso requiere la service role key, que
+                // nunca debe llegar al navegador). Por eso la contraseña se
+                // maneja aparte, contra el endpoint PATCH del servidor — es el
+                // único lugar con permisos de administrador para crear/actualizar
+                // la cuenta de Auth. Antes esto se mezclaba y la contraseña se
+                // guardaba en la tabla (se veía bien en "Contraseña actual") sin
+                // llegar nunca a Auth, así que el login seguía fallando.
+                await actualizar(initialData.coordinador_id, {
+                    perfil_id: data.perfil_id || null,
+                    referencia_coordinador_id: data.referencia_coordinador_id || null,
                     tipo: data.tipo,
-                }
+                } as any)
 
-                if (data.password && data.password.trim() !== '') {
-                    // Verificar permiso antes de permitir cambio de contraseña
-                    if (!permisos?.administrar) {
-                        setError('password', { type: 'manual', message: 'No tienes permisos para cambiar la contraseña' })
-                        setSubmitting(false)
-                        return
-                    }
-                    updatePayload.password = data.password
-                }
+                const nuevaPassword = data.password && data.password.trim() !== '' ? data.password.trim() : null
+                // Si no se escribió una nueva pero el coordinador aún no tiene
+                // cuenta de Auth, se reintenta con la contraseña ya guardada
+                // (coordinadores.password) para que quede sincronizada.
+                const passwordParaAuth = nuevaPassword || (!authUserId ? initialData?.password : null)
 
-                const result: any = await actualizar(initialData.coordinador_id, updatePayload)
-                toast.success("Coordinador actualizado exitosamente")
-                // Mostrar detalles si la API reportó acciones en Auth
-                if (result?._auth_action) {
-                    const a = result._auth_action as { action: string; auth_user_id?: string }
-                    if (a.action === 'created') {
-                        toast.success('Se creó un usuario de autenticación y se vinculó al coordinador')
-                        setAuthUserId(a.auth_user_id || null)
-                    } else if (a.action === 'linked') {
-                        toast.success('Se vinculó el coordinador con un usuario de Auth existente')
-                        setAuthUserId(a.auth_user_id || null)
-                    } else if (a.action === 'updated') {
-                        toast.success('Se actualizó la contraseña en Auth')
+                if (passwordParaAuth) {
+                    try {
+                        const patchRes = await fetch(`/api/coordinador/${initialData.coordinador_id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: passwordParaAuth }),
+                        })
+                        const patchData = await patchRes.json()
+                        if (patchRes.ok) {
+                            if (patchData?.auth_user_id) setAuthUserId(patchData.auth_user_id)
+                            toast.success(
+                                nuevaPassword
+                                    ? "Coordinador actualizado y contraseña sincronizada con Auth"
+                                    : "Coordinador actualizado y cuenta de Auth creada con la contraseña guardada"
+                            )
+                        } else {
+                            console.warn('No se pudo sincronizar la contraseña con Auth:', patchData?.error)
+                            toast.success("Coordinador actualizado exitosamente")
+                            toast.error(patchData?.error || "No se pudo sincronizar la contraseña con Auth", { duration: 8000 })
+                        }
+                    } catch (e) {
+                        console.warn('Error sincronizando contraseña con Auth:', e)
+                        toast.success("Coordinador actualizado exitosamente")
+                        toast.error("No se pudo sincronizar la contraseña con Auth (error de conexión)", { duration: 8000 })
                     }
+                } else {
+                    toast.success("Coordinador actualizado exitosamente")
                 }
 
                 router.push("/dashboard/coordinador")
@@ -324,34 +369,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
     // Voy a usar un estado separado para el nombre de la referencia seleccionada
     const [referenciaSeleccionadaNombre, setReferenciaSeleccionadaNombre] = useState("")
 
-    async function handleCreateAuth() {
-        if (!initialData?.coordinador_id) return
-        setCreatingAuthUser(true)
-        try {
-            // Obtener email actual del formulario (puede haber sido modificado)
-            const currentEmail = getValues('email') || initialData?.email
-
-            const res = await fetch(`/api/coordinador/${initialData.coordinador_id}/create-auth`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: currentEmail }),
-            })
-
-            const data = await res.json()
-            if (!res.ok) {
-                toast.error(data.error || 'Error creando usuario en Auth')
-            } else {
-                toast.success('Usuario de Auth creado/vinculado correctamente')
-                setAuthUserId(data?.auth_user_id || data?.id || null)
-            }
-        } catch (e) {
-            console.error('Error creando usuario en Auth:', e)
-            toast.error('Error creando usuario en Auth')
-        } finally {
-            setCreatingAuthUser(false)
-        }
-    }
-
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
             <Card className="border-none shadow-none">
@@ -373,13 +390,9 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                             {authUserId ? (
                                 <div>Usuario de Auth vinculado: <span className="font-medium">{authUserId}</span></div>
                             ) : (
-                                <div className="flex items-center gap-2">
-                                    <div>No hay usuario de Auth vinculado.</div>
-                                    {permisos?.administrar && (
-                                        <Button size="sm" variant="outline" onClick={handleCreateAuth} disabled={creatingAuthUser}>
-                                            {creatingAuthUser ? 'Creando...' : 'Crear usuario en Auth'}
-                                        </Button>
-                                    )}
+                                <div>
+                                    No hay usuario de Auth vinculado.
+                                    {permisos?.administrar && ' Se creará automáticamente al presionar Guardar.'}
                                 </div>
                             )}
                         </div>
@@ -509,11 +522,58 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                                 {errors.tipo && <p className="text-sm text-destructive">{errors.tipo.message}</p>}
                             </div>
 
-                            {/* Contraseña */}
+                            {/* Contraseña actual (solo lectura, solo al editar) */}
+                            {isEditing && initialData?.password && (
+                                <div className="space-y-2 pt-4">
+                                    <div className="flex items-center gap-2">
+                                        <Key className="h-5 w-5" />
+                                        <Label className="text-muted-foreground font-normal">Contraseña actual</Label>
+                                    </div>
+                                    <div className="relative">
+                                        <Input
+                                            readOnly
+                                            type={showContrasenaActual ? 'text' : 'password'}
+                                            value={initialData.password}
+                                            className="border-x-0 border-t-0 border-b rounded-none px-0 focus-visible:ring-0 shadow-none pr-10 bg-transparent"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowContrasenaActual((prev) => !prev)}
+                                            aria-label={showContrasenaActual ? 'Ocultar contraseña actual' : 'Ver contraseña actual'}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                        >
+                                            {showContrasenaActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        </button>
+                                    </div>
+                                    {authUserId && permisos?.administrar && (
+                                        <div className="pt-1">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleSincronizarPassword}
+                                                disabled={sincronizando}
+                                            >
+                                                {sincronizando ? (
+                                                    <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+                                                ) : null}
+                                                Sincronizar con Auth
+                                            </Button>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Úsalo si no puede iniciar sesión con esta contraseña — fuerza que Auth quede igual a lo que se ve aquí.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Contraseña nueva */}
                             <div className="space-y-2 pt-4">
                                 <div className="flex items-center gap-2">
                                     <Key className="h-5 w-5" />
-                                    <Label htmlFor="password" className="text-muted-foreground font-normal">Contraseña</Label>
+                                    <Label htmlFor="password" className="text-muted-foreground font-normal">
+                                        {isEditing ? "Nueva contraseña" : "Contraseña"}
+                                    </Label>
                                 </div>
                                 <div className="relative">
                                     <Input
@@ -523,12 +583,11 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                                         {...register("password")}
                                         className="border-x-0 border-t-0 border-b rounded-none px-0 focus-visible:ring-0 shadow-none pr-10"
                                     />
-                                    <button type="button" onClick={handleToggleShowPassword} aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+                                    <button type="button" onClick={handleToggleShowPassword} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
                                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </button>
                                 </div>
                                 {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
-                                {/* Se permite ver y cambiar la contraseña desde el frontend */}
                             </div>
                         </div>
                     </div>

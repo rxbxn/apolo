@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { RolesManager } from "@/components/roles/roles-manager"
+import { RolesManagerTabs } from "@/components/roles/roles-manager-tabs"
 
 export default function RolesPage() {
     return (
@@ -8,10 +8,10 @@ export default function RolesPage() {
                 <div className="mb-6">
                     <h1 className="text-2xl font-bold">Gestión de Roles</h1>
                     <p className="text-muted-foreground">
-                        Asigna roles a los usuarios del sistema. Los roles determinan los permisos y acceso a módulos.
+                        Asigna roles a los usuarios del sistema y define a qué módulos tiene acceso cada rol.
                     </p>
                 </div>
-                <RolesManager />
+                <RolesManagerTabs />
             </div>
         </DashboardLayout>
     )
