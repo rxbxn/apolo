@@ -346,15 +346,19 @@ export async function getMilitantesActivos() {
         // Transformar los datos al formato que espera el componente.
         // coordinador_id/dirigente_id se incluyen para poder autocompletar
         // esos campos cuando se selecciona un militante en Gestión Gerencial.
-        return (data || []).map((militante: any) => ({
-            id: militante.id,
-            nombre: militante.usuarios ?
-                `${militante.usuarios.nombres} ${militante.usuarios.apellidos}` :
-                'Usuario desconocido',
-            documento: militante.usuarios?.numero_documento || 'Sin documento',
-            coordinador_id: militante.coordinador_id || null,
-            dirigente_id: militante.dirigente_id || null,
-        }))
+        // El nombre viene de una tabla relacionada (usuarios) — Postgres no
+        // puede ordenar por eso vía .order(), se ordena en el cliente.
+        return (data || [])
+            .map((militante: any) => ({
+                id: militante.id,
+                nombre: militante.usuarios ?
+                    `${militante.usuarios.nombres} ${militante.usuarios.apellidos}` :
+                    'Usuario desconocido',
+                documento: militante.usuarios?.numero_documento || 'Sin documento',
+                coordinador_id: militante.coordinador_id || null,
+                dirigente_id: militante.dirigente_id || null,
+            }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre))
     } catch (error) {
         console.error("Error en getMilitantesActivos:", error)
         return []
@@ -377,14 +381,18 @@ export async function getCoordinadoresActivos() {
             return []
         }
 
-        // Transformar los datos al formato que espera el componente
-        return (data || []).map((coordinador: any) => ({
-            id: coordinador.id,
-            nombre: coordinador.usuarios ? 
-                `${coordinador.usuarios.nombres} ${coordinador.usuarios.apellidos}` : 
-                'Usuario desconocido',
-            tipo: coordinador.tipo || 'coordinador'
-        }))
+        // Transformar los datos al formato que espera el componente. El
+        // nombre viene de una tabla relacionada (usuarios) — Postgres no
+        // puede ordenar por eso vía .order(), se ordena en el cliente.
+        return (data || [])
+            .map((coordinador: any) => ({
+                id: coordinador.id,
+                nombre: coordinador.usuarios ?
+                    `${coordinador.usuarios.nombres} ${coordinador.usuarios.apellidos}` :
+                    'Usuario desconocido',
+                tipo: coordinador.tipo || 'coordinador'
+            }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre))
     } catch (error) {
         console.error("Error en getCoordinadoresActivos:", error)
         return []
@@ -428,13 +436,15 @@ export async function getDirigentes() {
             return []
         }
 
-        return (data || []).map((dirigente: any) => ({
-            id: dirigente.id,
-            nombre: dirigente.usuarios ?
-                `${dirigente.usuarios.nombres} ${dirigente.usuarios.apellidos}` :
-                'Usuario desconocido',
-            perfil_nombre: 'Dirigente',
-        }))
+        return (data || [])
+            .map((dirigente: any) => ({
+                id: dirigente.id,
+                nombre: dirigente.usuarios ?
+                    `${dirigente.usuarios.nombres} ${dirigente.usuarios.apellidos}` :
+                    'Usuario desconocido',
+                perfil_nombre: 'Dirigente',
+            }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre))
     } catch (error) {
         console.error("Error en getDirigentes:", error)
         return []

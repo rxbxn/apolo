@@ -135,7 +135,14 @@ export async function getMilitantesByCoordinador(coordinadorId: string) {
         .eq('coordinador_id', coordinadorId)
 
     if (error) throw new Error(error.message)
-    return data
+
+    // El nombre viene de una tabla relacionada (usuarios), Postgres/PostgREST
+    // no puede ordenar por eso vía .order() — se ordena en el cliente.
+    return (data || []).sort((a: any, b: any) => {
+        const nombreA = `${a.usuario?.nombres ?? ''} ${a.usuario?.apellidos ?? ''}`.trim()
+        const nombreB = `${b.usuario?.nombres ?? ''} ${b.usuario?.apellidos ?? ''}`.trim()
+        return nombreA.localeCompare(nombreB)
+    })
 }
 
 // --- Planillas ---

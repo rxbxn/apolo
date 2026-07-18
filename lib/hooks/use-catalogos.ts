@@ -39,13 +39,13 @@ export function useCatalogos() {
                 nivelesEscRes,
                 tiposVivRes,
             ] = await Promise.all([
-                supabase.from('ciudades').select('*').eq('activo', true).order('orden'),
-                supabase.from('localidades').select('*').eq('activo', true).order('orden'),
-                supabase.from('barrios').select('*').eq('activo', true).order('orden'),
+                supabase.from('ciudades').select('*').eq('activo', true).order('nombre'),
+                supabase.from('localidades').select('*').eq('activo', true).order('nombre'),
+                supabase.from('barrios').select('*').eq('activo', true).order('nombre'),
                 supabase.from('zonas').select('*').eq('activo', true).order('nombre'),
-                supabase.from('tipos_referencia').select('*').eq('activo', true).order('orden'),
-                supabase.from('niveles_escolaridad').select('*').eq('activo', true).order('orden'),
-                supabase.from('tipos_vivienda').select('*').eq('activo', true).order('orden'),
+                supabase.from('tipos_referencia').select('*').eq('activo', true).order('nombre'),
+                supabase.from('niveles_escolaridad').select('*').eq('activo', true).order('nombre'),
+                supabase.from('tipos_vivienda').select('*').eq('activo', true).order('nombre'),
             ])
 
             if (ciudadesRes.data) setCiudades(ciudadesRes.data)

@@ -31,29 +31,23 @@ export function DirigentesTable() {
     const load = useCallback(async (pg: number) => {
         setIsLoading(true)
         try {
-            // 1. Contar total
-            const { count } = await supabase
-                .from('dirigentes')
-                .select('*', { count: 'exact', head: true })
-            setTotal(count ?? 0)
-
-            // 2. Obtener página de relaciones
-            const from = pg * PAGE_SIZE
-            const to   = from + PAGE_SIZE - 1
+            // 1. Obtener TODAS las relaciones (tabla chica, orden se aplica en
+            // memoria por nombre — ver [[feedback-orden-alfabetico]] — no se
+            // puede paginar en la DB antes de resolver/ordenar por nombre,
+            // que vive en v_coordinadores_completo, no en `dirigentes`).
             const { data: rels, error: relsErr } = await supabase
                 .from('dirigentes')
                 .select('id, id_dirigente, id_coordinador')
-                .range(from, to)
             if (relsErr) throw relsErr
-            if (!rels || rels.length === 0) { setDirigentes([]); return }
+            if (!rels || rels.length === 0) { setDirigentes([]); setTotal(0); return }
 
-            // 3. Recopilar todos los IDs únicos de coordinadores
+            // 2. Recopilar todos los IDs únicos de coordinadores
             const ids = [...new Set([
                 ...rels.map((r: any) => r.id_dirigente),
                 ...rels.map((r: any) => r.id_coordinador).filter(Boolean),
             ])]
 
-            // 4. Un solo query para resolver nombres — evita N+1
+            // 3. Un solo query para resolver nombres — evita N+1
             const { data: coords } = await supabase
                 .from('v_coordinadores_completo')
                 .select('coordinador_id, nombres, apellidos, numero_documento, estado')
@@ -68,7 +62,7 @@ export function DirigentesTable() {
                 return `${c.nombres ?? ''} ${c.apellidos ?? ''}`.trim() || c.numero_documento || id
             }
 
-            setDirigentes(rels.map((r: any) => ({
+            const todos = rels.map((r: any) => ({
                 id:                 r.id,                    // PK real de dirigentes (bigint) — antes se usaba
                                                                // r.id_dirigente por error, que se repite una vez
                                                                // por cada coordinador que reporta al mismo
@@ -79,7 +73,13 @@ export function DirigentesTable() {
                 dirigente_nombre:   nombre(r.id_dirigente),
                 coordinador_nombre: nombre(r.id_coordinador),
                 estado:             coordMap[r.id_dirigente]?.estado ?? 'activo',
-            })))
+            }))
+
+            todos.sort((a, b) => a.dirigente_nombre.localeCompare(b.dirigente_nombre))
+
+            setTotal(todos.length)
+            const from = pg * PAGE_SIZE
+            setDirigentes(todos.slice(from, from + PAGE_SIZE))
         } catch (e) {
             console.error('Error cargando dirigentes:', e)
             setDirigentes([])

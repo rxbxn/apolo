@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         // Paginación
         const from = (page - 1) * pageSize
         const to = from + pageSize - 1
-        query = query.range(from, to).order('creado_en', { ascending: false })
+        query = query.range(from, to).order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
         const { data, error, count } = await query
 

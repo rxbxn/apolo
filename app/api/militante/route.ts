@@ -144,9 +144,13 @@ export async function GET(request: NextRequest) {
             return m
         })
 
-        // 5. Combinar y ordenar
+        // 5. Combinar y ordenar (alfabético por nombre — ver [[feedback-orden-alfabetico]])
         let allMilitantes = [...militantesEnriquecidos, ...virtualMilitantes]
-        allMilitantes.sort((a: any, b: any) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
+        allMilitantes.sort((a: any, b: any) => {
+            const nombreA = `${a.nombres || ''} ${a.apellidos || ''}`.trim()
+            const nombreB = `${b.nombres || ''} ${b.apellidos || ''}`.trim()
+            return nombreA.localeCompare(nombreB)
+        })
 
         // Si hay búsqueda, aplicar a los registros combinados (ahora con nombres enriquecidos)
         const filteredMilitantes = busqueda

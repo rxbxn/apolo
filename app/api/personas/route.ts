@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
             if (busqueda)  query = query.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
             if (estado)    query = query.eq('estado', estado)
             if (ciudad_id) query = query.eq('ciudad_id', ciudad_id)
-            query = query.range(from, to).order('creado_en', { ascending: false })
+            query = query.range(from, to).order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
             const { data: rows, error, count } = await query
             if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -106,12 +106,12 @@ export async function GET(request: NextRequest) {
         // (query ligera, sin datos extra, sin límite de paginación)
         let idQuery = (adminClient as any)
             .from('usuarios')
-            .select('id, creado_en')
+            .select('id, nombres, apellidos')
 
         if (busqueda)  idQuery = idQuery.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
         if (estado)    idQuery = idQuery.eq('estado', estado)
         if (ciudad_id) idQuery = idQuery.eq('ciudad_id', ciudad_id)
-        idQuery = idQuery.order('creado_en', { ascending: false })
+        idQuery = idQuery.order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
         const { data: allIdRows, error: idErr } = await idQuery
         if (idErr) return NextResponse.json({ error: idErr.message }, { status: 500 })
@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
                 )
             `)
             .in('id', pageIds)
-            .order('creado_en', { ascending: false })
+            .order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
         if (dataErr) return NextResponse.json({ error: dataErr.message }, { status: 500 })
 
