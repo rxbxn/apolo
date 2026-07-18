@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
                 'COMP. PROYECTO': u.comp_proyecto ?? m.compromiso_proyecto ?? '',
                 'VERIFICACIÓN STICKER': u.verificacion_sticker ?? '',
                 'FECHA VERIFICACIÓN STICKER': u.fecha_verificacion_sticker ?? '',
+                'OBSERVACIÓN VERIFICACIÓN STICKER': u.observacion_verificacion_sticker ?? '',
                 'NOMBRE VERIFICADOR': u.nombre_verificador ?? '',
                 'BENEFICIARIO': u.beneficiario ?? '',
                 'POBLACION': u.poblacion ?? '',

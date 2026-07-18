@@ -286,6 +286,7 @@ export async function POST(request: NextRequest) {
                 poblacion: q(row['POBLACION']) || null,
                 numero_hijos: qInt(row['HIJOS']),
                 verificacion_sticker: q(row['VERIFICACIÓN STICKER']) || null,
+                observacion_verificacion_sticker: q(row['OBSERVACIÓN VERIFICACIÓN STICKER']) || null,
                 nombre_verificador: q(row['NOMBRE VERIFICADOR']) || null,
                 comp_proyecto: q(row['COMP. PROYECTO']) || null,
                 estado,
