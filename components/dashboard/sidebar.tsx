@@ -3,13 +3,14 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, X, UserCheck, UserPlus, Shield } from "lucide-react"
+import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, X, UserCheck, UserPlus, Shield, Images } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useModulosAccesibles } from "@/lib/hooks/use-modulos-accesibles"
 
 const MENU_ITEMS = [
   { label: "Actividades", href: "/dashboard/activities", icon: Activity },
   { label: "Módulo Personas", href: "/dashboard/personas", icon: Users },
+  { label: "Fotos Masivas", href: "/dashboard/fotos-masivas", icon: Images },
   { label: "Módulo Coordinador", href: "/dashboard/coordinador", icon: UserCheck },
   { label: "Módulo Militante", href: "/dashboard/militante", icon: UserPlus },
   { label: "Módulo Dirigente", href: "/dashboard/dirigente", icon: UserCheck },

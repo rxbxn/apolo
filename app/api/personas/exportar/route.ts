@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
         const adminClient = createAdminClient()
 
         const [{ data: usuarios, error: uErr }, { data: militantes }, { data: coordinadores }, { data: referencias }] = await Promise.all([
-            (adminClient as any).from('usuarios').select('*').order('creado_en', { ascending: true }),
+            (adminClient as any).from('usuarios').select('*').order('nombres', { ascending: true }).order('apellidos', { ascending: true }),
             (adminClient as any).from('militantes').select('*'),
             (adminClient as any)
                 .from('coordinadores')
@@ -98,6 +98,20 @@ export async function GET(request: NextRequest) {
         })
 
         const ws = XLSX.utils.json_to_sheet(rows, { header: EXCEL_HEADERS as unknown as string[] })
+
+        // La columna OBSERVACIONES se mantiene en el archivo (el import la
+        // lee de vuelta al reimportar — quitarla del todo borraría esas
+        // observaciones en cada reimport) pero se oculta visualmente, a
+        // pedido del usuario.
+        const idxObservaciones = (EXCEL_HEADERS as unknown as string[]).indexOf('OBSERVACIONES')
+        if (idxObservaciones !== -1) {
+            ws['!cols'] = ws['!cols'] || []
+            for (let i = 0; i <= idxObservaciones; i++) {
+                if (!ws['!cols'][i]) ws['!cols'][i] = {}
+            }
+            ws['!cols'][idxObservaciones] = { ...ws['!cols'][idxObservaciones], hidden: true }
+        }
+
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Personas')
 
