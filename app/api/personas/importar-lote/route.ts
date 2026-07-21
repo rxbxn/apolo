@@ -390,9 +390,21 @@ export async function POST(request: NextRequest) {
         // ── Pasada 4: militantes — bulk fetch existentes, luego insert/update ──
         const usuarioIds = [...cedulaToUsuarioId.values()]
         const { data: militantesExistentesDb } = await adminClient
-            .from('militantes').select('id, usuario_id').in('usuario_id', usuarioIds)
+            .from('militantes')
+            .select('id, usuario_id, compromiso_cautivo, compromiso_marketing, compromiso_impacto')
+            .in('usuario_id', usuarioIds)
         const usuarioIdToMilitanteId = new Map<string, string>(
             (militantesExistentesDb ?? []).map((m: any) => [m.usuario_id, m.id])
+        )
+        const usuarioIdToCompromisosActuales = new Map<string, { cautivo: string; marketing: string; impacto: string }>(
+            (militantesExistentesDb ?? []).map((m: any) => [
+                m.usuario_id,
+                {
+                    cautivo: String(m.compromiso_cautivo ?? '0'),
+                    marketing: String(m.compromiso_marketing ?? '0'),
+                    impacto: String(m.compromiso_impacto ?? '0'),
+                },
+            ])
         )
 
         const militantesAInsertar: Record<string, any>[] = []
@@ -404,8 +416,38 @@ export async function POST(request: NextRequest) {
 
             const militanteId = usuarioIdToMilitanteId.get(usuarioId)
             if (militanteId) {
+                // Estos 3 campos ahora los mantienen las Planillas (ver
+                // sincronizarCompromisosPlanilla en lib/actions/debate.ts): se
+                // recalculan solos con cada planilla que se suba/edite/borre. Si
+                // el Excel trae un valor DISTINTO al que ya hay (y ese valor
+                // actual no es 0, o sea que probablemente viene de planillas
+                // reales), no se sobrescribe en silencio — se avisa y se
+                // conserva el valor de planillas, que es la fuente de verdad.
+                const actual = usuarioIdToCompromisosActuales.get(usuarioId)
+                const { compromiso_cautivo, compromiso_marketing, compromiso_impacto, ...militanteExtraSinCompromisos } = f.militanteExtra
+                const payloadUpdate: Record<string, any> = { ...militanteExtraSinCompromisos }
+
+                const camposCompromiso: [string, string, string][] = [
+                    ['CAUTIVO', compromiso_cautivo, actual?.cautivo ?? '0'],
+                    ['MARKETING', compromiso_marketing, actual?.marketing ?? '0'],
+                    ['IMPACTO', compromiso_impacto, actual?.impacto ?? '0'],
+                ]
+                for (const [etiqueta, nuevo, actualValor] of camposCompromiso) {
+                    const key = `compromiso_${etiqueta.toLowerCase()}`
+                    const hayConflicto = actualValor !== '0' && actualValor !== '' && nuevo !== actualValor
+                    if (hayConflicto) {
+                        avisos.push(
+                            `Fila ${f.filaNum} (${f.cedula}): el Excel trae COMP. ${etiqueta}=${nuevo} pero el sistema ya tiene ${actualValor} ` +
+                            `(viene de sus planillas reales) — se mantuvo el valor de planillas, no se sobrescribió. Si de verdad quieres cambiarlo, edítalo en Planillas.`
+                        )
+                        // no se agrega al payload: se deja el valor actual intacto
+                    } else {
+                        payloadUpdate[key] = nuevo
+                    }
+                }
+
                 actualizacionesMilitante.push(
-                    adminClient.from('militantes').update(f.militanteExtra).eq('id', militanteId)
+                    adminClient.from('militantes').update(payloadUpdate).eq('id', militanteId)
                 )
             } else {
                 militantesAInsertar.push({ usuario_id: usuarioId, ...f.militanteExtra })

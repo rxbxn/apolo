@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { aplicarBusquedaPorNombre } from '@/lib/supabase/busqueda'
 
 export async function GET(request: NextRequest) {
     try {
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (busqueda) {
-            usuariosQuery = usuariosQuery.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
+            usuariosQuery = aplicarBusquedaPorNombre(usuariosQuery, busqueda)
         }
 
         let usuariosData: any[] = []

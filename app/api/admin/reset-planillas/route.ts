@@ -18,6 +18,18 @@ import { createAdminClient } from '@/lib/supabase/server'
 export async function POST() {
     try {
         const adminClient = createAdminClient() as any
+
+        // Militantes con planillas ANTES de borrar — sus compromiso_cautivo/
+        // marketing/impacto (sincronizados automáticamente desde las
+        // planillas, ver sincronizarCompromisosPlanilla en lib/actions/debate.ts)
+        // quedan en 0 tras el borrado masivo, para no dejarlos con un total
+        // "fantasma" de planillas que ya no existen.
+        const { data: planillasExistentes } = await adminClient
+            .from('debate_planillas')
+            .select('militante_id')
+
+        const militantesAfectados = [...new Set((planillasExistentes || []).map((p: any) => p.militante_id).filter(Boolean))]
+
         const { error, count } = await adminClient
             .from('debate_planillas')
             .delete({ count: 'exact' })
@@ -27,7 +39,22 @@ export async function POST() {
             return NextResponse.json({ error: error.message, ok: false }, { status: 500 })
         }
 
-        return NextResponse.json({ ok: true, eliminados: count ?? 0 })
+        if (militantesAfectados.length > 0) {
+            const { data: militantes } = await adminClient
+                .from('militantes')
+                .select('id, usuario_id')
+                .in('id', militantesAfectados)
+
+            const ceros = { compromiso_cautivo: 0, compromiso_marketing: 0, compromiso_impacto: 0 }
+            await adminClient.from('militantes').update(ceros).in('id', militantesAfectados)
+
+            const usuarioIds = [...new Set((militantes || []).map((m: any) => m.usuario_id).filter(Boolean))]
+            if (usuarioIds.length > 0) {
+                await adminClient.from('usuarios').update(ceros).in('id', usuarioIds)
+            }
+        }
+
+        return NextResponse.json({ ok: true, eliminados: count ?? 0, compromisosReiniciados: militantesAfectados.length })
     } catch (error: any) {
         console.error('Error en reset-planillas:', error)
         return NextResponse.json({ error: error?.message || 'Error interno', ok: false }, { status: 500 })

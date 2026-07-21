@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { aplicarBusquedaPorNombre } from '@/lib/supabase/busqueda'
 
 export async function GET(request: NextRequest) {
     try {
@@ -18,9 +19,7 @@ export async function GET(request: NextRequest) {
 
         // Aplicar filtros
         if (busqueda) {
-            query = query.or(
-                `nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%,email.ilike.%${busqueda}%`
-            )
+            query = aplicarBusquedaPorNombre(query, busqueda, ['numero_documento', 'email'])
         }
 
         if (estado) {

@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { aplicarBusquedaPorNombre } from "@/lib/supabase/busqueda"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
         // usuario ya se le puede asignar o cambiar el rol.
         let query = supabase
             .from("usuarios")
-            .select("id, nombres, apellidos, email, auth_user_id, estado, numero_documento", { count: 'exact' })
+            .select("id, nombres, apellidos, email, auth_user_id, estado, numero_documento, username, password", { count: 'exact' })
             .order("nombres", { ascending: true })
 
         const filtroConAuth = usuarioIdsConAuthPorCoordinador.length > 0
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
         query = query.or(filtroConAuth)
 
         if (search) {
-            query = query.or(`nombres.ilike.%${search}%,apellidos.ilike.%${search}%,email.ilike.%${search}%`)
+            query = aplicarBusquedaPorNombre(query, search, ['email'])
         }
 
         const from = (page - 1) * pageSize
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: true, message: "Rol creado", perfil })
         }
         // Asignar rol a usuario
-        const { usuario_id, perfil_id, auth_user_id, password, email: emailOverride } = body
+        const { usuario_id, perfil_id, auth_user_id, password, email: emailOverride, username } = body
         if (!usuario_id || !perfil_id) {
             return NextResponse.json({ error: "usuario_id y perfil_id son requeridos" }, { status: 400 })
         }
@@ -127,20 +128,42 @@ export async function POST(request: Request) {
         // Obtener datos del usuario
         const { data: usuario, error: usuarioError } = await supabase
             .from("usuarios")
-            .select("id, nombres, apellidos, email, auth_user_id, numero_documento")
+            .select("id, nombres, apellidos, email, auth_user_id, numero_documento, username")
             .eq("id", usuario_id)
             .single()
         if (usuarioError || !usuario) {
             return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
         }
 
+        // Login sin correo: si viene `username`, se normaliza y se le arma un
+        // correo interno sintético (nunca se le muestra al usuario) para que
+        // Supabase Auth, que exige formato de email, pueda crear la cuenta.
+        // Esto es lo que le permite a un "Verificador de Sticker" (u otro rol
+        // sin correo real) iniciar sesión solo con usuario + contraseña.
+        let usernameNormalizado: string | null = null
+        if (username) {
+            usernameNormalizado = String(username).trim().toLowerCase().replace(/\s+/g, '')
+            if (!/^[a-z0-9._-]{3,30}$/.test(usernameNormalizado)) {
+                return NextResponse.json({ error: "El usuario debe tener entre 3 y 30 caracteres: solo letras, números, punto, guion o guion bajo (sin espacios ni @)" }, { status: 400 })
+            }
+            const { data: usernameExistente } = await supabase
+                .from("usuarios")
+                .select("id")
+                .eq("username", usernameNormalizado)
+                .neq("id", usuario_id)
+                .maybeSingle()
+            if (usernameExistente) {
+                return NextResponse.json({ error: `El usuario "${usernameNormalizado}" ya está en uso` }, { status: 400 })
+            }
+        }
+
         let finalAuthUserId = auth_user_id || usuario.auth_user_id
 
         // Si no tiene auth_user_id, crear usuario en Supabase Auth
         if (!finalAuthUserId) {
-            const loginEmail = emailOverride || usuario.email
+            const loginEmail = emailOverride || (usernameNormalizado ? `${usernameNormalizado}@apolo.interno` : usuario.email)
             if (!loginEmail) {
-                return NextResponse.json({ error: "El usuario debe tener un email para crear la cuenta de autenticación" }, { status: 400 })
+                return NextResponse.json({ error: "El usuario debe tener un email o un usuario (username) para crear la cuenta de autenticación" }, { status: 400 })
             }
 
             // Contraseña: la que puso el admin en el formulario. Si no mandó
@@ -177,20 +200,44 @@ export async function POST(request: Request) {
 
                 finalAuthUserId = authUser.user.id
 
-                // Actualizar el auth_user_id en la tabla usuarios
+                // Actualizar auth_user_id y, si aplica, username + contraseña en
+                // texto plano (misma decisión ya tomada para coordinadores.password:
+                // el admin necesita poder ver/compartir la contraseña de estas
+                // cuentas de servicio, que no tienen correo real para "olvidé mi
+                // contraseña").
                 const { error: updateError } = await supabase
                     .from("usuarios")
-                    .update({ auth_user_id: finalAuthUserId })
+                    .update({
+                        auth_user_id: finalAuthUserId,
+                        ...(usernameNormalizado ? { username: usernameNormalizado, password: String(finalPassword) } : {}),
+                    })
                     .eq("id", usuario_id)
 
                 if (updateError) {
-                    console.error('Error actualizando auth_user_id:', updateError)
+                    console.error('Error actualizando auth_user_id/username:', updateError)
                     // No retornamos error aquí porque el usuario ya se creó en auth
                 }
 
             } catch (err: any) {
                 console.error('Error en creación de auth user:', err)
                 return NextResponse.json({ error: `Error creando usuario de autenticación: ${err.message}` }, { status: 500 })
+            }
+        } else if (usernameNormalizado) {
+            // El usuario YA tenía cuenta de Auth (ej. se le está asignando un
+            // nuevo rol o reseteando la contraseña) — igual guardamos/actualizamos
+            // el username y, si mandaron una contraseña nueva, la sincronizamos
+            // con Auth también.
+            const updates: Record<string, any> = { username: usernameNormalizado }
+            if (password && String(password).length >= 6) {
+                updates.password = String(password)
+                const { error: pwError } = await supabase.auth.admin.updateUserById(finalAuthUserId, { password: String(password) })
+                if (pwError) {
+                    console.warn('No se pudo sincronizar la nueva contraseña con Auth:', pwError)
+                }
+            }
+            const { error: updateError } = await supabase.from("usuarios").update(updates).eq("id", usuario_id)
+            if (updateError) {
+                console.warn('No se pudo actualizar username/password:', updateError)
             }
         }
 

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { aplicarBusquedaPorNombre } from '@/lib/supabase/busqueda'
 import type { Database } from '@/lib/supabase/database.types'
 
 type Usuario = Database['public']['Tables']['usuarios']['Row']
@@ -206,7 +207,7 @@ export function usePersonas() {
                 .limit(20)
 
             if (termino && termino.length >= 3) {
-                query = query.or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,numero_documento.ilike.%${termino}%`)
+                query = aplicarBusquedaPorNombre(query, termino)
             }
 
             const { data, error: queryError } = await query

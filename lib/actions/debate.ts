@@ -145,6 +145,83 @@ export async function getMilitantesByCoordinador(coordinadorId: string) {
     })
 }
 
+// --- Sincronización Planillas → ficha de la persona ---
+//
+// A pedido del usuario: cada vez que se crea/edita/borra una planilla, los
+// campos compromiso_cautivo / compromiso_marketing / compromiso_impacto de
+// esa persona (en Personas) deben quedar SIEMPRE actualizados con la SUMA de
+// todas sus planillas — no son un valor manual aparte, deben reflejar en
+// todo momento lo realmente reportado.
+//
+// Se escribe tanto en `militantes` (según CLAUDE.md, ahí es donde viven
+// estos campos) como en `usuarios` (el código de exportar/informes hace
+// fallback a usuarios.compromiso_* si existe — ver app/api/personas/exportar
+// y lib/supabase/informes.ts), para que quede sincronizado sin importar cuál
+// de las dos tablas esté leyendo cada pantalla. Si alguna de las dos
+// columnas no existe en el entorno donde corre esto, el error se ignora
+// (no debe tumbar la creación/edición de la planilla).
+async function sincronizarCompromisosPlanilla(supabase: any, militanteId: string | null | undefined) {
+    if (!militanteId) return
+
+    const { data: totalesRows, error: sumError } = await supabase
+        .from('debate_planillas')
+        .select('cautivo, marketing, impacto')
+        .eq('militante_id', militanteId)
+
+    if (sumError) {
+        console.warn('No se pudo recalcular compromisos desde planillas:', sumError)
+        return
+    }
+
+    const totales = (totalesRows || []).reduce(
+        (acc: { cautivo: number; marketing: number; impacto: number }, r: any) => {
+            acc.cautivo += Number(r.cautivo) || 0
+            acc.marketing += Number(r.marketing) || 0
+            acc.impacto += Number(r.impacto) || 0
+            return acc
+        },
+        { cautivo: 0, marketing: 0, impacto: 0 }
+    )
+
+    const { data: militante, error: militanteError } = await supabase
+        .from('militantes')
+        .select('id, usuario_id')
+        .eq('id', militanteId)
+        .maybeSingle()
+
+    if (militanteError) {
+        console.warn('No se pudo resolver el militante para sincronizar compromisos:', militanteError)
+        return
+    }
+    if (!militante) return
+
+    const { error: updateMilitanteError } = await supabase
+        .from('militantes')
+        .update({
+            compromiso_cautivo: totales.cautivo,
+            compromiso_marketing: totales.marketing,
+            compromiso_impacto: totales.impacto,
+        })
+        .eq('id', militanteId)
+    if (updateMilitanteError) {
+        console.warn('No se pudo actualizar compromisos en militantes:', updateMilitanteError)
+    }
+
+    if (militante.usuario_id) {
+        const { error: updateUsuarioError } = await supabase
+            .from('usuarios')
+            .update({
+                compromiso_cautivo: totales.cautivo,
+                compromiso_marketing: totales.marketing,
+                compromiso_impacto: totales.impacto,
+            })
+            .eq('id', militante.usuario_id)
+        if (updateUsuarioError) {
+            console.warn('No se pudo actualizar compromisos en usuarios:', updateUsuarioError)
+        }
+    }
+}
+
 // --- Planillas ---
 export async function getPlanillas() {
     const cookieStore = await cookies()
@@ -161,10 +238,12 @@ export async function getPlanillas() {
 export async function createPlanilla(formData: FormData) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-    const data = Object.fromEntries(formData)
+    const data = Object.fromEntries(formData) as any
     const { error } = await supabase.from('debate_planillas').insert([data])
     if (error) throw new Error(error.message)
+    await sincronizarCompromisosPlanilla(supabase, data.militante_id)
     revalidatePath('/dashboard/debate/planillas')
+    revalidatePath('/dashboard/personas')
 }
 
 export async function createPlanillasBulk(rows: any[]) {
@@ -185,24 +264,66 @@ export async function createPlanillasBulk(rows: any[]) {
 
     const { error } = await supabase.from('debate_planillas').insert(payload)
     if (error) throw new Error(error.message)
+
+    // Un Excel puede traer varias filas para el mismo militante (o varios
+    // militantes distintos) — se sincroniza una sola vez por cada militante
+    // afectado, no una vez por fila.
+    const militantesAfectados = [...new Set(payload.map(p => p.militante_id).filter(Boolean))]
+    for (const militanteId of militantesAfectados) {
+        await sincronizarCompromisosPlanilla(supabase, militanteId)
+    }
+
     revalidatePath('/dashboard/debate/planillas')
+    revalidatePath('/dashboard/personas')
 }
 
 export async function updatePlanilla(id: string, formData: FormData) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
-    const data = Object.fromEntries(formData)
+    const data = Object.fromEntries(formData) as any
+
+    // Si el update cambia de militante, hay que sincronizar AMBOS: el
+    // anterior (para que le queden restados los valores de esta planilla
+    // que ya no es suya) y el nuevo.
+    const { data: planillaAnterior } = await supabase
+        .from('debate_planillas')
+        .select('militante_id')
+        .eq('id', id)
+        .maybeSingle()
+
     const { error } = await supabase.from('debate_planillas').update(data).eq('id', id)
     if (error) throw new Error(error.message)
+
+    const militanteAnterior = (planillaAnterior as any)?.militante_id
+    const militanteNuevo = data.militante_id
+    await sincronizarCompromisosPlanilla(supabase, militanteNuevo)
+    if (militanteAnterior && militanteAnterior !== militanteNuevo) {
+        await sincronizarCompromisosPlanilla(supabase, militanteAnterior)
+    }
+
     revalidatePath('/dashboard/debate/planillas')
+    revalidatePath('/dashboard/personas')
 }
 
 export async function deletePlanilla(id: string) {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
+
+    // Hay que saber a quién pertenecía ANTES de borrarla, si no ya no hay
+    // forma de recalcular su total tras el borrado.
+    const { data: planilla } = await supabase
+        .from('debate_planillas')
+        .select('militante_id')
+        .eq('id', id)
+        .maybeSingle()
+
     const { error } = await supabase.from('debate_planillas').delete().eq('id', id)
     if (error) throw new Error(error.message)
+
+    await sincronizarCompromisosPlanilla(supabase, (planilla as any)?.militante_id)
+
     revalidatePath('/dashboard/debate/planillas')
+    revalidatePath('/dashboard/personas')
 }
 
 // --- Inconsistencias ---

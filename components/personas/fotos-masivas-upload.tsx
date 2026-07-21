@@ -3,15 +3,47 @@
 import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Loader2, Upload, FileArchive, Images, CheckCircle2, XCircle, HelpCircle } from "lucide-react"
 import { toast } from "sonner"
 
 interface ResultadoFotosMasivas {
     total: number
-    actualizados: { archivo: string; persona: string; usuarioId: string }[]
+    actualizados: { archivo: string; persona: string; usuarioId: string; via?: "cedula" | "sin_sufijo" | "sin_tildes" }[]
     sin_coincidencia: string[]
     ambiguos: { archivo: string; coincidencias: number }[]
     errores: { archivo: string; error: string }[]
+}
+
+// Sube el FormData con XMLHttpRequest en vez de fetch — es lo único que
+// expone el progreso real de la subida (fetch no tiene evento de progreso de
+// upload). Con ZIPs grandes o muchas imágenes, esto es lo que tarda; el
+// procesamiento en el servidor (emparejar + subir a MinIO) es rápido en
+// comparación.
+function subirConProgreso(url: string, formData: FormData, onProgress: (pct: number) => void): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open("POST", url)
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                onProgress(Math.round((e.loaded / e.total) * 100))
+            }
+        }
+        xhr.onload = () => {
+            try {
+                const data = JSON.parse(xhr.responseText)
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(data)
+                } else {
+                    reject(new Error(data?.error || `Error HTTP ${xhr.status}`))
+                }
+            } catch {
+                reject(new Error("Respuesta inválida del servidor"))
+            }
+        }
+        xhr.onerror = () => reject(new Error("Error de red subiendo los archivos"))
+        xhr.send(formData)
+    })
 }
 
 export function FotosMasivasUpload() {
@@ -21,6 +53,8 @@ export function FotosMasivasUpload() {
     const [zip, setZip] = useState<File | null>(null)
     const [imagenes, setImagenes] = useState<File[]>([])
     const [subiendo, setSubiendo] = useState(false)
+    const [progreso, setProgreso] = useState(0)
+    const [procesandoServidor, setProcesandoServidor] = useState(false)
     const [resultado, setResultado] = useState<ResultadoFotosMasivas | null>(null)
 
     const hayArchivos = !!zip || imagenes.length > 0
@@ -32,19 +66,25 @@ export function FotosMasivasUpload() {
         }
 
         setSubiendo(true)
+        setProgreso(0)
+        setProcesandoServidor(false)
         setResultado(null)
         try {
             const formData = new FormData()
             if (zip) formData.append("zip", zip)
             imagenes.forEach((img) => formData.append("fotos", img))
 
-            const res = await fetch("/api/personas/fotos-masivas", {
-                method: "POST",
-                body: formData,
+            const data = await subirConProgreso("/api/personas/fotos-masivas", formData, (pct) => {
+                setProgreso(pct)
+                // Al llegar a 100% de subida, el navegador ya envió todo — lo
+                // que sigue (emparejar nombres, subir a MinIO) pasa en el
+                // servidor sin más eventos de progreso, así que se muestra un
+                // estado indeterminado en vez de dejar la barra pegada en 100%
+                // como si ya hubiera terminado.
+                if (pct >= 100) setProcesandoServidor(true)
             })
-            const data = await res.json()
 
-            if (!res.ok) throw new Error(data.error || "Error procesando las fotos")
+            if (data?.error) throw new Error(data.error)
 
             setResultado(data)
             const okCount = data.actualizados?.length || 0
@@ -57,6 +97,7 @@ export function FotosMasivasUpload() {
             toast.error(err.message || "Error procesando las fotos")
         } finally {
             setSubiendo(false)
+            setProcesandoServidor(false)
             setZip(null)
             setImagenes([])
             if (zipInputRef.current) zipInputRef.current.value = ""
@@ -128,11 +169,21 @@ export function FotosMasivasUpload() {
                         </div>
                     </div>
 
-                    <div className="border-t pt-5">
+                    <div className="border-t pt-5 space-y-3">
                         <Button type="button" disabled={subiendo || !hayArchivos} onClick={handleProcesar}>
                             {subiendo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                             {subiendo ? "Procesando..." : "Subir y actualizar fotos"}
                         </Button>
+
+                        {subiendo && (
+                            <div className="space-y-1.5 max-w-sm">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{procesandoServidor ? "Emparejando nombres y guardando fotos..." : "Subiendo archivos..."}</span>
+                                    <span>{procesandoServidor ? "" : `${progreso}%`}</span>
+                                </div>
+                                <Progress value={procesandoServidor ? 100 : progreso} className={procesandoServidor ? "animate-pulse" : undefined} />
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -154,6 +205,15 @@ export function FotosMasivasUpload() {
                                     {resultado.actualizados.map((r) => (
                                         <li key={r.usuarioId + r.archivo} className="text-muted-foreground">
                                             <span className="text-foreground">{r.archivo}</span> → {r.persona}
+                                            {r.via === "cedula" && (
+                                                <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(match por cédula)</span>
+                                            )}
+                                            {r.via === "sin_sufijo" && (
+                                                <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(match ignorando sufijo numérico del archivo)</span>
+                                            )}
+                                            {r.via === "sin_tildes" && (
+                                                <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(match ignorando tildes)</span>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
@@ -167,7 +227,8 @@ export function FotosMasivasUpload() {
                                     Sin coincidencia ({resultado.sin_coincidencia.length})
                                 </div>
                                 <p className="text-xs text-muted-foreground pl-6">
-                                    No se encontró ninguna persona cuyo nombre coincida exactamente con el archivo.
+                                    No se encontró ninguna persona: se probó por nombre exacto, por cédula (si el archivo
+                                    se llama con números) y por nombre ignorando tildes.
                                 </p>
                                 <ul className="text-sm space-y-1 max-h-48 overflow-y-auto pl-6">
                                     {resultado.sin_coincidencia.map((archivo) => (

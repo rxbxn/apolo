@@ -165,7 +165,7 @@ export function generarEmailPendiente(nombreCompleto: string): string {
 // Cabeceras EXACTAS del Excel "Personas (78).xlsx" — el export las genera
 // y el import las espera de vuelta, para que el archivo sea 100% redondeable.
 export const EXCEL_HEADERS = [
-    'ID', 'CEDULA', 'ESTADO', 'OBSERVACIONES', 'FECHA', 'NOMBRE COMPLETO', 'COORDINADOR', 'DIRIGENTE',
+    'ID', 'CEDULA', 'ESTADO', 'FECHA', 'NOMBRE COMPLETO', 'COORDINADOR', 'DIRIGENTE',
     'TIPO', 'TALLA', 'LUGAR NACIMIENTO', 'DIRECCIÓN', 'TELEFONO FIJO', 'CIUDAD', 'BARRIO',
     'LOCALIDAD', 'NACIMIENTO', 'GENERO', 'EMAIL', 'REFERENCIA', 'TEL REFERENCIA', 'VIVIENDA',
     'FACEBOOK', 'INSTAGRAM', 'TWITTER', 'WHATSAPP', 'ESTUDIOS', 'OCUPACION',

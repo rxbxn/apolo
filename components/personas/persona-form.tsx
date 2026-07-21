@@ -28,59 +28,59 @@ import { CompromisosSection } from "./form-sections/compromisos"
 // Esquema de validación completo
 const personaSchema = z.object({
   // Datos Personales
-  fecha_registro: z.string().optional(),
-  nombres: z.string().optional(),
-  apellidos: z.string().optional(),
-  tipo_documento: z.string().optional(),
-  numero_documento: z.string().optional(),
-  fecha_nacimiento: z.string().optional(),
-  genero: z.string().optional(),
-  poblacion: z.string().optional(),
-  verificacion_sticker: z.string().optional(),
-  fecha_verificacion_sticker: z.string().optional(),
-  observacion_verificacion_sticker: z.string().optional(),
-  nombre_verificador: z.string().optional(),
+  fecha_registro: z.string().nullable().optional(),
+  nombres: z.string().nullable().optional(),
+  apellidos: z.string().nullable().optional(),
+  tipo_documento: z.string().nullable().optional(),
+  numero_documento: z.string().nullable().optional(),
+  fecha_nacimiento: z.string().nullable().optional(),
+  genero: z.string().nullable().optional(),
+  poblacion: z.string().nullable().optional(),
+  verificacion_sticker: z.string().nullable().optional(),
+  fecha_verificacion_sticker: z.string().nullable().optional(),
+  observacion_verificacion_sticker: z.string().nullable().optional(),
+  nombre_verificador: z.string().nullable().optional(),
 
   // Ubicación
-  lugar_nacimiento: z.string().optional(),
-  direccion: z.string().optional(),
-  ciudad_id: z.string().optional(),
-  localidad_id: z.string().optional(),
-  barrio_id: z.string().optional(),
-  ubicacion: z.string().optional(),
+  lugar_nacimiento: z.string().nullable().optional(),
+  direccion: z.string().nullable().optional(),
+  ciudad_id: z.string().nullable().optional(),
+  localidad_id: z.string().nullable().optional(),
+  barrio_id: z.string().nullable().optional(),
+  ubicacion: z.string().nullable().optional(),
 
   // Contacto
-  email: z.string().email("Email inválido").optional().or(z.literal("")),
-  celular: z.string().optional(),
-  telefono: z.string().optional(),
-  telefono_fijo: z.string().optional(),
-  whatsapp: z.string().optional(),
+  email: z.string().email("Email inválido").nullable().optional().or(z.literal("")),
+  celular: z.string().nullable().optional(),
+  telefono: z.string().nullable().optional(),
+  telefono_fijo: z.string().nullable().optional(),
+  whatsapp: z.string().nullable().optional(),
 
   // Datos Demográficos
-  nivel_escolaridad: z.string().optional(),
-  perfil_ocupacion: z.string().optional(),
-  tipo_vivienda: z.string().optional(),
-  talla_camisa: z.string().optional(),
+  nivel_escolaridad: z.string().nullable().optional(),
+  perfil_ocupacion: z.string().nullable().optional(),
+  tipo_vivienda: z.string().nullable().optional(),
+  talla_camisa: z.string().nullable().optional(),
   ideologia_politica: z.union([z.enum(['Izquierda', 'Centro', 'Derecha']), z.literal(''), z.null()]).optional(),
   tiene_hijos: z.boolean().default(false),
   numero_hijos: z.coerce.number().optional(),
 
   // Redes Sociales
-  facebook: z.string().optional(),
-  instagram: z.string().optional(),
-  twitter: z.string().optional(),
+  facebook: z.string().nullable().optional(),
+  instagram: z.string().nullable().optional(),
+  twitter: z.string().nullable().optional(),
 
   // Referencias
-  referencia_seleccion: z.string().optional(),
-  telefono_referencia: z.string().optional(),
+  referencia_seleccion: z.string().nullable().optional(),
+  telefono_referencia: z.string().nullable().optional(),
 
   // Compromisos
   compromiso_cautivo: z.coerce.number().min(0).default(0),
   compromiso_impacto: z.coerce.number().min(0).default(0),
   compromiso_marketing: z.coerce.number().min(0).default(0),
   compromiso_difusion: z.coerce.number().min(0).default(0).or(z.string()),
-  compromiso_proyecto: z.string().optional(),
-  observaciones: z.string().optional(),
+  compromiso_proyecto: z.string().nullable().optional(),
+  observaciones: z.string().nullable().optional(),
   // Estado
   estado: z.enum(['activo', 'inactivo', 'suspendido', 'Activo']).optional(),
 })
@@ -102,6 +102,32 @@ const SECTIONS = [
   { id: "compromisos", label: "Compromisos" },
 ]
 
+// Los campos vacíos en la base real vienen como `null` (columna sin dato en
+// Postgres). El schema de abajo usa z.string().optional() en casi todos los
+// campos, y "optional" en zod solo acepta que el campo NO esté (undefined) —
+// NO acepta null explícito. Eso es lo que causaba el error "Expected string,
+// received null" bloqueando el guardado en registros viejos que tienen
+// campos vacíos en la BD (ej. observación de sticker nunca diligenciada).
+// Se normaliza null → valor vacío del tipo correcto ANTES de dárselo a
+// react-hook-form, así ningún campo secundario vuelve a bloquear el guardado
+// sin importar qué tan "sucio" venga el registro desde la base.
+function limpiarValoresNulos(data: Record<string, any>): Record<string, any> {
+  const limpio: Record<string, any> = {}
+  for (const [key, value] of Object.entries(data)) {
+    limpio[key] = value === null ? "" : value
+  }
+  // Campos que no son texto: si vinieron null (quedaron en "" arriba), se
+  // corrigen al tipo/valor por defecto que sí espera el schema.
+  if (limpio.tiene_hijos === "") limpio.tiene_hijos = false
+  if (limpio.numero_hijos === "") limpio.numero_hijos = undefined
+  if (limpio.estado === "") limpio.estado = "activo"
+  if (limpio.ideologia_politica === "") limpio.ideologia_politica = null
+  for (const campo of ["compromiso_cautivo", "compromiso_impacto", "compromiso_marketing", "compromiso_difusion"]) {
+    if (limpio[campo] === "") limpio[campo] = 0
+  }
+  return limpio
+}
+
 export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps) {
   const router = useRouter()
   const { crear, actualizar } = usePersonas()
@@ -112,18 +138,20 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
 
   const form = useForm<PersonaFormValues>({
     resolver: zodResolver(personaSchema),
-    defaultValues: initialData || {
-      nombres: "",
-      apellidos: "",
-      tipo_documento: "Cédula",
-      numero_documento: "",
-      compromiso_cautivo: 0,
-      compromiso_impacto: 0,
-      compromiso_marketing: 0,
-      compromiso_difusion: 0,
-      estado: "activo",
-      ideologia_politica: null,
-    },
+    defaultValues: initialData
+      ? limpiarValoresNulos(initialData)
+      : {
+          nombres: "",
+          apellidos: "",
+          tipo_documento: "Cédula",
+          numero_documento: "",
+          compromiso_cautivo: 0,
+          compromiso_impacto: 0,
+          compromiso_marketing: 0,
+          compromiso_difusion: 0,
+          estado: "activo",
+          ideologia_politica: null,
+        },
   })
 
   const handleNext = () => {
@@ -173,8 +201,35 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
       }
 
       if (isEditing && initialData?.id) {
-        await actualizar(initialData.id, personaData as any)
-        toast.success("Persona actualizada correctamente")
+        // Campos secundarios (observaciones, sticker) que NO deben bloquear
+        // el guardado si algo falla con ellos — por ejemplo, si la columna
+        // aún no existe en la BD real o el valor no pasa un constraint. Si el
+        // update completo falla, se reintenta solo con los datos
+        // principales (nombre, cédula, ubicación, etc.) para no perder ese
+        // trabajo por un campo secundario problemático.
+        const CAMPOS_SECUNDARIOS = [
+          'observaciones',
+          'observacion_verificacion_sticker',
+          'verificacion_sticker',
+          'fecha_verificacion_sticker',
+          'nombre_verificador',
+        ]
+
+        try {
+          await actualizar(initialData.id, personaData as any)
+          toast.success("Persona actualizada correctamente")
+        } catch (err: any) {
+          const teniaSecundarios = CAMPOS_SECUNDARIOS.some((c) => personaData[c] !== undefined)
+          if (!teniaSecundarios) throw err
+
+          const personaDataSinSecundarios: any = { ...personaData }
+          CAMPOS_SECUNDARIOS.forEach((c) => delete personaDataSinSecundarios[c])
+
+          await actualizar(initialData.id, personaDataSinSecundarios)
+          toast.warning(
+            "Se guardaron los datos principales. Observaciones/sticker no se pudieron guardar — avisa a soporte."
+          )
+        }
         // After updating usuario, try to sync militante commitments if militante exists
         // Sincronizar compromisos en militantes
         try {

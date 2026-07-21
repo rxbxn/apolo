@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
                 'ID': idx + 1,
                 'CEDULA': u.numero_documento ?? '',
                 'ESTADO': u.estado ? u.estado.charAt(0).toUpperCase() + u.estado.slice(1) : '',
-                'OBSERVACIONES': u.observaciones ?? '',
                 'FECHA': u.fecha_registro ?? (u.creado_en ? String(u.creado_en).slice(0, 10) : ''),
                 'NOMBRE COMPLETO': `${u.nombres ?? ''} ${u.apellidos ?? ''}`.trim(),
                 'COORDINADOR': coordNombre,
@@ -97,20 +96,8 @@ export async function GET(request: NextRequest) {
             }
         })
 
+        // Sin columnas ocultas: todas visibles al abrir el archivo.
         const ws = XLSX.utils.json_to_sheet(rows, { header: EXCEL_HEADERS as unknown as string[] })
-
-        // La columna OBSERVACIONES se mantiene en el archivo (el import la
-        // lee de vuelta al reimportar — quitarla del todo borraría esas
-        // observaciones en cada reimport) pero se oculta visualmente, a
-        // pedido del usuario.
-        const idxObservaciones = (EXCEL_HEADERS as unknown as string[]).indexOf('OBSERVACIONES')
-        if (idxObservaciones !== -1) {
-            ws['!cols'] = ws['!cols'] || []
-            for (let i = 0; i <= idxObservaciones; i++) {
-                if (!ws['!cols'][i]) ws['!cols'][i] = {}
-            }
-            ws['!cols'][idxObservaciones] = { ...ws['!cols'][idxObservaciones], hidden: true }
-        }
 
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, 'Personas')

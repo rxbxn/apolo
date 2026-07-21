@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { aplicarBusquedaPorNombre } from '@/lib/supabase/busqueda'
 
 interface Coordinador {
     coordinador_id: string
@@ -100,9 +101,7 @@ export function useCoordinadores() {
 
             // Aplicar filtros
             if (filtros.busqueda) {
-                query = query.or(
-                    `nombres.ilike.%${filtros.busqueda}%,apellidos.ilike.%${filtros.busqueda}%,numero_documento.ilike.%${filtros.busqueda}%,email.ilike.%${filtros.busqueda}%`
-                )
+                query = aplicarBusquedaPorNombre(query, filtros.busqueda, ['numero_documento', 'email'])
             }
 
             if (filtros.estado) {
@@ -619,11 +618,11 @@ export function useCoordinadores() {
 
             if (!termino || termino.length < 3) return []
 
-            const { data, error: queryError } = await supabase
-                .from('v_coordinadores_completo')
-                .select('coordinador_id, nombres, apellidos, email')
-                .or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,email.ilike.%${termino}%`)
-                .limit(10)
+            const { data, error: queryError } = await aplicarBusquedaPorNombre(
+                supabase.from('v_coordinadores_completo').select('coordinador_id, nombres, apellidos, email'),
+                termino,
+                ['email'],
+            ).limit(10)
 
             if (queryError) throw queryError
 
@@ -657,7 +656,7 @@ export function useCoordinadores() {
                 .limit(50)
 
             if (termino && termino.length > 0) {
-                query = query.or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,email.ilike.%${termino}%`)
+                query = aplicarBusquedaPorNombre(query, termino, ['email'])
             }
 
             const { data, error: queryError } = await query

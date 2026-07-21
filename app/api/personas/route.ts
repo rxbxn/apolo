@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { aplicarBusquedaPorNombre } from '@/lib/supabase/busqueda'
 
 export async function GET(request: NextRequest) {
     try {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
                     )
                 `, { count: 'exact' })
 
-            if (busqueda)  query = query.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
+            if (busqueda)  query = aplicarBusquedaPorNombre(query, busqueda)
             if (estado)    query = query.eq('estado', estado)
             if (ciudad_id) query = query.eq('ciudad_id', ciudad_id)
             query = query.range(from, to).order('nombres', { ascending: true }).order('apellidos', { ascending: true })
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
             .from('usuarios')
             .select('id, nombres, apellidos')
 
-        if (busqueda)  idQuery = idQuery.or(`nombres.ilike.%${busqueda}%,apellidos.ilike.%${busqueda}%,numero_documento.ilike.%${busqueda}%`)
+        if (busqueda)  idQuery = aplicarBusquedaPorNombre(idQuery, busqueda)
         if (estado)    idQuery = idQuery.eq('estado', estado)
         if (ciudad_id) idQuery = idQuery.eq('ciudad_id', ciudad_id)
         idQuery = idQuery.order('nombres', { ascending: true }).order('apellidos', { ascending: true })

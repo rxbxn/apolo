@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RolesManager } from "@/components/roles/roles-manager"
 import { PermisosModuloManager } from "@/components/roles/permisos-modulo-manager"
 import { PermisosUsuarioManager } from "@/components/roles/permisos-usuario-manager"
+import { CrearUsuarioManager } from "@/components/roles/crear-usuario-manager"
+import { CrearRolManager } from "@/components/roles/crear-rol-manager"
 import { Loader2 } from "lucide-react"
 
 interface Perfil {
@@ -40,6 +42,8 @@ export function RolesManagerTabs() {
                 <TabsTrigger value="usuarios">Asignar roles a usuarios</TabsTrigger>
                 <TabsTrigger value="permisos">Permisos por rol</TabsTrigger>
                 <TabsTrigger value="permisos-usuario">Permisos por usuario</TabsTrigger>
+                <TabsTrigger value="crear-usuario">Crear usuario (sin correo)</TabsTrigger>
+                <TabsTrigger value="crear-rol">Crear rol</TabsTrigger>
             </TabsList>
             <TabsContent value="usuarios">
                 <RolesManager />
@@ -55,6 +59,12 @@ export function RolesManagerTabs() {
             </TabsContent>
             <TabsContent value="permisos-usuario">
                 <PermisosUsuarioManager />
+            </TabsContent>
+            <TabsContent value="crear-usuario">
+                <CrearUsuarioManager />
+            </TabsContent>
+            <TabsContent value="crear-rol">
+                <CrearRolManager />
             </TabsContent>
         </Tabs>
     )
