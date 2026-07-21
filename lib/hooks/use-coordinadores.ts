@@ -51,6 +51,40 @@ interface ActualizarCoordinadorData {
     password?: string
 }
 
+// crear()/actualizar() escriben coordinadores.perfil_id, pero
+// obtenerModulosUsuario (web y APK) consulta PRIMERO la tabla usuario_perfil
+// y solo cae a coordinadores.perfil_id si esa tabla no tiene ninguna fila
+// activa para el usuario. Si el usuario ya tenía una fila en usuario_perfil
+// de antes (ej. cuando era un Militante normal, antes de ser promovido a
+// coordinador), esa fila vieja gana silenciosamente y el coordinador queda
+// sin ver los módulos de su perfil real, aunque coordinadores.perfil_id
+// esté bien puesto. Esta función mantiene usuario_perfil sincronizado:
+// desactiva cualquier otro perfil activo del usuario y deja el perfil
+// asignado como el único activo/principal.
+async function sincronizarUsuarioPerfil(usuarioId: string, perfilId: string) {
+    try {
+        await supabase
+            .from('usuario_perfil')
+            .update({ activo: false, fecha_revocacion: new Date().toISOString() })
+            .eq('usuario_id', usuarioId)
+            .eq('activo', true)
+            .neq('perfil_id', perfilId)
+
+        const { error } = await supabase
+            .from('usuario_perfil')
+            .upsert(
+                { usuario_id: usuarioId, perfil_id: perfilId, es_principal: true, activo: true, fecha_revocacion: null },
+                { onConflict: 'usuario_id,perfil_id' }
+            )
+
+        if (error) {
+            console.warn('⚠️ No se pudo sincronizar usuario_perfil:', error)
+        }
+    } catch (err) {
+        console.warn('⚠️ Excepción sincronizando usuario_perfil:', err)
+    }
+}
+
 export function useCoordinadores() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<Error | null>(null)
@@ -271,6 +305,26 @@ export function useCoordinadores() {
                 throw new Error('Usuario no encontrado')
             }
 
+            // Evitar coordinadores duplicados: si esta persona YA tiene una
+            // fila en coordinadores, no crear una segunda. Esto fue lo que
+            // pasó con "ECO SOMOS TODOS 2" — se creó un segundo coordinador
+            // con un login nuevo mientras el original (con los militantes
+            // reales asignados) quedó huérfano e inaccesible. Ahora se
+            // bloquea con un mensaje claro que dirige a editar el existente.
+            const { data: coordinadorExistente } = await supabase
+                .from('coordinadores')
+                .select('id, email')
+                .eq('usuario_id', coordinadorData.usuario_id)
+                .maybeSingle()
+
+            if (coordinadorExistente) {
+                throw new Error(
+                    `Esta persona ya tiene un coordinador creado (email: ${coordinadorExistente.email}). ` +
+                    `Edita ese coordinador existente en vez de crear uno nuevo — si no, la cuenta nueva queda ` +
+                    `desconectada de los militantes y demás datos ya asignados.`
+                )
+            }
+
             // Verificar que el email no esté registrado
             const { data: emailExistente } = await supabase
                 .from('coordinadores')
@@ -383,6 +437,12 @@ export function useCoordinadores() {
             const coordinador = coordinadorCreated[0] || coordinadorCreated
             console.log('✅ Coordinador creado exitosamente:', coordinador)
 
+            // Mantener usuario_perfil en sync con coordinadores.perfil_id —
+            // ver comentario en sincronizarUsuarioPerfil() más arriba.
+            if (coordinadorPayload.perfil_id) {
+                await sincronizarUsuarioPerfil(coordinadorData.usuario_id, coordinadorPayload.perfil_id)
+            }
+
             // Mensaje según si se creó auth o no
             if (authUserId) {
                 console.log('🎉 Coordinador creado CON usuario de autenticación')
@@ -439,6 +499,14 @@ export function useCoordinadores() {
             }
 
             console.log('✅ Coordinador actualizado exitosamente:', coordinadorActualizado)
+
+            // Igual que en crear(): si se cambió el perfil, reflejarlo en
+            // usuario_perfil para que obtenerModulosUsuario no siga usando
+            // un perfil viejo/desactualizado.
+            if (coordinadorData.perfil_id && coordinadorActualizado?.usuario_id) {
+                await sincronizarUsuarioPerfil(coordinadorActualizado.usuario_id, coordinadorData.perfil_id)
+            }
+
             return coordinadorActualizado
 
         } catch (err) {

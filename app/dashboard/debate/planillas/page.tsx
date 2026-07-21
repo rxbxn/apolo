@@ -2,6 +2,7 @@ import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { PlanillasTable } from "@/components/debate/planillas/planillas-table"
 import { PlanillasForm } from "@/components/debate/planillas/planillas-form"
 import { PlanillasUpload } from "@/components/debate/planillas/planillas-upload"
+import { PlanillasReset } from "@/components/debate/planillas/planillas-reset"
 import { getPlanillas } from "@/lib/actions/debate"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -31,6 +32,7 @@ export default async function PlanillasPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <PlanillasReset />
                         <PlanillasUpload />
                         <PlanillasForm />
                     </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Download, Upload, Loader2 } from "lucide-react"
+import { Plus, Download, Upload, Loader2, ImageOff } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { toast } from "sonner"
@@ -12,6 +12,7 @@ export function PersonasHeader() {
   const router = useRouter()
   const { permisos } = usePermisos("Módulo Personas")
   const [isExporting, setIsExporting] = useState(false)
+  const [isExportingSinFoto, setIsExportingSinFoto] = useState(false)
 
   // La exportación ahora vive en el servidor (/api/personas/exportar) y usa
   // la MISMA estructura de columnas que espera "Importar" — el archivo es
@@ -46,6 +47,38 @@ export function PersonasHeader() {
     }
   }
 
+  // Excel con nombre completo + cédula de quienes hoy no tienen foto de
+  // perfil (útil para saber a quién le falta después de una carga masiva).
+  const handleExportSinFoto = async () => {
+    try {
+      setIsExportingSinFoto(true)
+      toast.info('Generando lista de personas sin foto...')
+
+      const res = await fetch('/api/personas/sin-foto')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Error generando la lista')
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Personas_sin_foto_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success('Lista generada exitosamente')
+    } catch (error: any) {
+      console.error('Error exportando personas sin foto:', error)
+      toast.error('Error al generar la lista: ' + (error.message || 'Error desconocido'))
+    } finally {
+      setIsExportingSinFoto(false)
+    }
+  }
+
   return (
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
@@ -67,6 +100,22 @@ export function PersonasHeader() {
               <Download className="w-4 h-4 mr-2" />
             )}
             Exportar
+          </Button>
+        )}
+
+        {permisos?.exportar && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportSinFoto}
+            disabled={isExportingSinFoto}
+          >
+            {isExportingSinFoto ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <ImageOff className="w-4 h-4 mr-2" />
+            )}
+            Sin foto
           </Button>
         )}
 

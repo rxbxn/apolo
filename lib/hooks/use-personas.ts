@@ -194,16 +194,33 @@ export function usePersonas() {
         try {
             setLoading(true)
             setError(null)
-            if (!termino || termino.length < 3) return []
-            const { data, error: queryError } = await supabase
+            // Antes esto exigía escribir 3+ letras para traer cualquier cosa,
+            // así que al abrir el combobox no se veía nada hasta que el
+            // usuario tecleaba — se sentía "roto". Ahora, sin término (o con
+            // menos de 3 letras) trae los primeros resultados ordenados por
+            // nombre, y a partir de 3 letras sí filtra por lo escrito.
+            let query = supabase
                 .from('usuarios')
                 .select('id, nombres, apellidos, numero_documento')
-                .or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,numero_documento.ilike.%${termino}%`)
-                .limit(10)
+                .order('nombres', { ascending: true })
+                .limit(20)
+
+            if (termino && termino.length >= 3) {
+                query = query.or(`nombres.ilike.%${termino}%,apellidos.ilike.%${termino}%,numero_documento.ilike.%${termino}%`)
+            }
+
+            const { data, error: queryError } = await query
             if (queryError) throw queryError
             return data || []
         } catch (err) {
-            console.error('Error buscando referentes:', err)
+            // Antes este catch se tragaba el error silenciosamente (solo
+            // console.error) y devolvía [] igual que "sin resultados" — eso
+            // hacía indistinguible un fallo real (RLS, columna, red) de una
+            // búsqueda legítimamente vacía. Ahora se guarda en `error` para
+            // que la pantalla que llama pueda mostrarlo.
+            const error = err instanceof Error ? err : new Error('Error buscando personas')
+            console.error('Error buscando referentes:', error)
+            setError(error)
             return []
         } finally {
             setLoading(false)

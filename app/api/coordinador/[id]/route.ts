@@ -315,15 +315,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
                             console.error('Error creando usuario en Auth durante actualización:', createErr)
                             const msg = (createErr.message || '').toLowerCase()
                             if (msg.includes('already') || msg.includes('duplicate')) {
-                                // Si ya existe usuario en Auth, buscarlo y actualizar contraseña
+                                // Si ya existe usuario en Auth, buscarlo y actualizar contraseña.
+                                // IMPORTANTE: `adminClient.from('auth.users')` NO funciona — PostgREST
+                                // solo expone el esquema `public` por defecto, así que esa consulta
+                                // siempre fallaba (tabla no encontrada) y esta rama devolvía 500 sin
+                                // nunca vincular auth_user_id. Esto dejaba coordinadores con cuenta
+                                // real en Auth pero `coordinadores.auth_user_id` en null para siempre
+                                // (el bug de "0 militantes" / "0 módulos" de fabrizioemiliani@gmail.com).
+                                // El fix correcto es usar la API admin de Auth (listUsers) y buscar
+                                // por email, paginando por si hay más usuarios que el tamaño de página.
                                 try {
-                                    const { data: existingAuth, error: findErr } = await adminClient.from('auth.users').select('id').eq('email', email).single()
-                                    if (findErr || !existingAuth) {
-                                        console.error('Error buscando usuario existente en Auth tras conflicto:', findErr)
-                                        return NextResponse.json({ error: 'Error creando usuario en Auth' }, { status: 500 })
+                                    let existingId: string | null = null
+                                    const emailLower = String(email || '').toLowerCase()
+                                    for (let page = 1; page <= 20 && !existingId; page++) {
+                                        const { data: pageData, error: listErr } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 })
+                                        if (listErr) {
+                                            console.error('Error listando usuarios de Auth tras conflicto:', listErr)
+                                            break
+                                        }
+                                        const users = (pageData as any)?.users || []
+                                        const match = users.find((u: any) => (u.email || '').toLowerCase() === emailLower)
+                                        if (match) existingId = match.id
+                                        if (users.length < 1000) break // última página
                                     }
 
-                                    const existingId = (existingAuth as any).id
+                                    if (!existingId) {
+                                        console.error('No se encontró el usuario existente en Auth tras conflicto de email:', email)
+                                        return NextResponse.json({ error: 'Error creando usuario en Auth' }, { status: 500 })
+                                    }
                                     if (typeof authAdmin.updateUserById === 'function') {
                                         const { error: authUpdateError } = await authAdmin.updateUserById(existingId, { password })
                                         if (authUpdateError) {

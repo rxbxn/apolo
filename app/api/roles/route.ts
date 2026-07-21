@@ -23,15 +23,36 @@ export async function GET(request: Request) {
             .order("nivel_jerarquico", { ascending: true })
         if (perfilesError) return NextResponse.json({ error: perfilesError.message }, { status: 500 })
 
+        // Coordinadores con cuenta de Auth ya creada: el auth_user_id de un
+        // coordinador se guarda en la tabla `coordinadores`, NO en
+        // `usuarios.auth_user_id` (son flujos separados: el módulo
+        // Coordinador nunca sincroniza ese campo en `usuarios`). Si acá solo
+        // se mirara `usuarios.auth_user_id`, ningún coordinador aparecería
+        // jamás en Gestión de Roles aunque sí pueda iniciar sesión.
+        const { data: coordinadoresConAuth } = await supabase
+            .from("coordinadores")
+            .select("usuario_id, auth_user_id")
+            .not("auth_user_id", "is", null)
+
+        const authPorUsuarioId = new Map<string, string>(
+            (coordinadoresConAuth || [])
+                .filter((c: any) => c.usuario_id && c.auth_user_id)
+                .map((c: any) => [c.usuario_id as string, c.auth_user_id as string])
+        )
+        const usuarioIdsConAuthPorCoordinador = Array.from(authPorUsuarioId.keys())
+
         // Usuarios con paginación. Solo se muestran los que ya tienen cuenta
-        // de acceso (auth_user_id) — a este usuario ya se le puede asignar o
-        // cambiar el rol. Para habilitar el acceso de alguien nuevo se usa el
-        // flujo del módulo correspondiente (p. ej. Coordinador), no esta lista.
+        // de acceso (auth_user_id propio o vía coordinadores) — a este
+        // usuario ya se le puede asignar o cambiar el rol.
         let query = supabase
             .from("usuarios")
             .select("id, nombres, apellidos, email, auth_user_id, estado, numero_documento", { count: 'exact' })
-            .not("auth_user_id", "is", null)
             .order("nombres", { ascending: true })
+
+        const filtroConAuth = usuarioIdsConAuthPorCoordinador.length > 0
+            ? `auth_user_id.not.is.null,id.in.(${usuarioIdsConAuthPorCoordinador.join(",")})`
+            : `auth_user_id.not.is.null`
+        query = query.or(filtroConAuth)
 
         if (search) {
             query = query.or(`nombres.ilike.%${search}%,apellidos.ilike.%${search}%,email.ilike.%${search}%`)
@@ -53,9 +74,13 @@ export async function GET(request: Request) {
         // Combinar datos
         const usuariosConRoles = (usuarios || []).map((u: any) => {
             const perfilAsignado = (usuarioPerfil || []).find((up: any) => up.usuario_id === u.id && up.activo)
-            const userRole = (userRoles || []).find((ur: any) => ur.user_id === u.auth_user_id)
+            // Si usuarios.auth_user_id está vacío, usar el de coordinadores
+            // (ver comentario arriba) para que sí se pueda resolver su rol.
+            const authUserIdEfectivo = u.auth_user_id || authPorUsuarioId.get(u.id) || null
+            const userRole = (userRoles || []).find((ur: any) => ur.user_id === authUserIdEfectivo)
             return {
                 ...u,
+                auth_user_id: authUserIdEfectivo,
                 perfil_asignado: perfilAsignado?.perfiles || null,
                 perfil_id: perfilAsignado?.perfil_id || null,
                 user_role: userRole?.role || null,

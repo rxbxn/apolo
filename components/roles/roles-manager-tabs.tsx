@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RolesManager } from "@/components/roles/roles-manager"
 import { PermisosModuloManager } from "@/components/roles/permisos-modulo-manager"
+import { PermisosUsuarioManager } from "@/components/roles/permisos-usuario-manager"
 import { Loader2 } from "lucide-react"
 
 interface Perfil {
@@ -38,6 +39,7 @@ export function RolesManagerTabs() {
             <TabsList>
                 <TabsTrigger value="usuarios">Asignar roles a usuarios</TabsTrigger>
                 <TabsTrigger value="permisos">Permisos por rol</TabsTrigger>
+                <TabsTrigger value="permisos-usuario">Permisos por usuario</TabsTrigger>
             </TabsList>
             <TabsContent value="usuarios">
                 <RolesManager />
@@ -50,6 +52,9 @@ export function RolesManagerTabs() {
                 ) : (
                     <PermisosModuloManager perfiles={perfiles} />
                 )}
+            </TabsContent>
+            <TabsContent value="permisos-usuario">
+                <PermisosUsuarioManager />
             </TabsContent>
         </Tabs>
     )

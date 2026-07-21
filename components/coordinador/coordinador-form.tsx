@@ -43,26 +43,20 @@ interface CoordinadorFormValues {
     email: string
     password?: string
     perfil_id?: string
-    referencia_coordinador_id?: string
     tipo: 'Coordinador' | 'Estructurador'
 }
 
 export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorFormProps) {
     const router = useRouter()
     const { crear, actualizar, loading } = useCoordinadores()
-    const { buscarReferentes } = usePersonas()
+    const { buscarReferentes, error: errorPersonas } = usePersonas()
     const [submitting, setSubmitting] = useState(false)
 
-    // Estados para los combobox
+    // Estados para el combobox de búsqueda de persona
     const [openPersona, setOpenPersona] = useState(false)
     const [personasSearch, setPersonasSearch] = useState("")
     const [personas, setPersonas] = useState<any[]>([])
     const [loadingPersonas, setLoadingPersonas] = useState(false)
-
-    const [openReferencia, setOpenReferencia] = useState(false)
-    const [referenciaSearch, setReferenciaSearch] = useState("")
-    const [referencias, setReferencias] = useState<any[]>([])
-    const [loadingReferencias, setLoadingReferencias] = useState(false)
 
     const [perfiles, setPerfiles] = useState<any[]>([])
 
@@ -74,7 +68,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
             ? z.preprocess((val) => (val === '' ? undefined : val), z.string().min(6, "La contraseña debe tener al menos 6 caracteres").optional())
             : z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
         perfil_id: z.string().optional(),
-        referencia_coordinador_id: z.string().optional(),
         tipo: z.enum(["Coordinador", "Estructurador"], {
             required_error: "Debe seleccionar un tipo (Coordinador o Estructurador)",
         }),
@@ -96,7 +89,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
             email: "",
             password: "",
             perfil_id: "",
-            referencia_coordinador_id: "",
             tipo: "Coordinador",
         },
     })
@@ -124,7 +116,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                 email: initialData.email || '',
                 password: '',
                 perfil_id: initialData.perfil_id || '',
-                referencia_coordinador_id: initialData.referencia_coordinador_id || '',
                 tipo: initialData.tipo || 'Coordinador',
             })
             setAuthUserId(initialData.auth_user_id || null)
@@ -171,7 +162,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
     }
 
     const usuario_id = watch("usuario_id")
-    const referencia_coordinador_id = watch("referencia_coordinador_id")
 
     // Cargar perfiles
     useEffect(() => {
@@ -182,12 +172,11 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
         cargarPerfiles()
     }, [])
 
-    // Buscar personas (para el campo Coordinador/Usuario principal)
+    // Buscar personas (para el campo Persona a registrar). Se dispara al
+    // escribir Y al abrir el combobox (openPersona), para que ya se vea una
+    // lista inicial sin tener que escribir nada primero.
     useEffect(() => {
-        if (personasSearch.length < 3) {
-            setPersonas([])
-            return
-        }
+        if (!openPersona) return
 
         const timer = setTimeout(async () => {
             setLoadingPersonas(true)
@@ -197,61 +186,17 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
         }, 300)
 
         return () => clearTimeout(timer)
-    }, [personasSearch])
+    }, [personasSearch, openPersona])
 
-    // Buscar referencias (ahora busca en PERSONAS, no solo coordinadores)
+    // buscarReferentes ya no traga los errores en silencio (ver
+    // use-personas.ts) — si la búsqueda falla (RLS, columna, red), esto
+    // reacciona al cambio de estado y avisa, en vez de dejar que se vea
+    // igual que "no se encontraron personas".
     useEffect(() => {
-        if (referenciaSearch.length < 3) {
-            setReferencias([])
-            return
+        if (errorPersonas) {
+            toast.error(`No se pudo buscar personas: ${errorPersonas.message}`)
         }
-
-        const timer = setTimeout(async () => {
-            setLoadingReferencias(true)
-            // Usamos buscarReferentes que busca en la tabla personas
-            const results = await buscarReferentes(referenciaSearch)
-            setReferencias(results)
-            setLoadingReferencias(false)
-        }, 300)
-
-        return () => clearTimeout(timer)
-    }, [referenciaSearch])
-
-    // Cargar datos iniciales de referencia si existen (para edición)
-    useEffect(() => {
-        async function cargarReferenciaInicial() {
-            if (initialData?.referencia_coordinador_id && referencias.length === 0) {
-                // Si es edición y hay referencia, intentar cargar sus datos básicos para mostrar en el combo
-                if (initialData.referencia_nombre) {
-                    setReferencias([{
-                        id: initialData.referencia_coordinador_id,
-                        nombres: (initialData.referencia_nombre || '').split(' ')[0] || '',
-                        apellidos: (initialData.referencia_nombre || '').split(' ').slice(1).join(' ') || '',
-                        numero_documento: ''
-                    }])
-                    return
-                }
-
-                // Si no tenemos referencia_nombre, consultar la API del coordinador y usar los datos del usuario asociado
-                try {
-                    const refId = initialData.referencia_coordinador_id
-                    const res = await fetch(`/api/coordinador/${refId}`)
-                    if (res.ok) {
-                        const data = await res.json()
-                        const nombre = data.nombres || data.referencia_nombre || ''
-                        const partes = (nombre || '').split(' ')
-                        const nombres = partes[0] || ''
-                        const apellidos = partes.slice(1).join(' ') || ''
-                        setReferencias([{ id: refId, nombres, apellidos, numero_documento: data.numero_documento || '' }])
-                        return
-                    }
-                } catch (e) {
-                    console.warn('No se pudo cargar referencia inicial desde API:', e)
-                }
-            }
-        }
-        cargarReferenciaInicial()
-    }, [initialData])
+    }, [errorPersonas])
 
     async function onSubmit(data: CoordinadorFormValues) {
         try {
@@ -282,7 +227,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                 // llegar nunca a Auth, así que el login seguía fallando.
                 await actualizar(initialData.coordinador_id, {
                     perfil_id: data.perfil_id || null,
-                    referencia_coordinador_id: data.referencia_coordinador_id || null,
                     tipo: data.tipo,
                 } as any)
 
@@ -323,14 +267,10 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
 
                 router.push("/dashboard/coordinador")
             } else {
-                // IMPORTANTE: referencia_coordinador_id debe ser un ID de coordinador existente
-                // Si no se proporciona, debe ser undefined/null, NO usar usuario_id
                 const payload = {
                     ...data,
                     // La contraseña es requerida en creación según el esquema
                     password: data.password as string,
-                    // Solo incluir referencia_coordinador_id si se proporcionó explícitamente
-                    referencia_coordinador_id: data.referencia_coordinador_id || undefined
                 }
                 await crear(payload)
                 toast.success("Coordinador creado exitosamente")
@@ -363,11 +303,6 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
         const full = `${n} ${a}`.trim()
         return full || 'Persona seleccionada'
     })()
-
-    // Para referencia, necesitamos buscar en la lista de coordinadores cargados
-    // Pero como cambiamos a buscar en personas, esto es complejo.
-    // Voy a usar un estado separado para el nombre de la referencia seleccionada
-    const [referenciaSeleccionadaNombre, setReferenciaSeleccionadaNombre] = useState("")
 
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -405,7 +340,7 @@ export function CoordinadorForm({ initialData, isEditing = false }: CoordinadorF
                         <div className="space-y-6">
                             {/* Persona a Registrar (Antes Referencia) */}
                             <div className="space-y-2">
-                                <Label className="text-muted-foreground font-normal">Referencia</Label>
+                                <Label className="text-muted-foreground font-normal">Persona a registrar</Label>
                                 <Popover open={openPersona} onOpenChange={setOpenPersona}>
                                     <PopoverTrigger asChild>
                                         <Button

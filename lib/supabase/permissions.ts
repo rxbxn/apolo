@@ -82,8 +82,13 @@ export async function obtenerPermisosUsuario(usuarioId: string) {
             console.error('Error obteniendo permisos (rpc):', error)
         }
 
+        // Permisos puntuales del usuario (usuario_permiso_modulo) — se suman
+        // SIEMPRE, sea cual sea el resultado de la RPC o del fallback por
+        // perfil, porque son adicionales al rol, no un reemplazo.
+        const permisosPuntuales = await obtenerPermisosPuntualesUsuario(usuarioId)
+
         if (data && (data as any[]).length > 0) {
-            return data as any[]
+            return combinarPermisosSinDuplicar(data as any[], permisosPuntuales)
         }
 
         // Fallback: buscar si existe un coordinador con ese usuario_id y usar su perfil_id
@@ -114,18 +119,57 @@ export async function obtenerPermisosUsuario(usuarioId: string) {
                             permiso_nombre: r.permisos?.nombre || null,
                         }))
 
-                    return mapped
+                    return combinarPermisosSinDuplicar(mapped, permisosPuntuales)
                 }
             }
         } catch (e) {
             console.warn('Error en fallback de obtenerPermisosUsuario:', e)
         }
 
-        return []
+        return permisosPuntuales
     } catch (error) {
         console.error('Error en obtenerPermisosUsuario:', error)
         return []
     }
+}
+
+// Permisos de usuario_permiso_modulo (módulos adicionales otorgados a un
+// usuario puntual desde "Gestión de Roles > Permisos por usuario"),
+// mapeados al mismo shape que devuelve la RPC / el fallback por perfil.
+async function obtenerPermisosPuntualesUsuario(usuarioId: string) {
+    try {
+        const { data: rows, error } = await supabase
+            .from('usuario_permiso_modulo')
+            .select('modulos(nombre, ruta, activo), permisos(codigo, nombre)')
+            .eq('usuario_id', usuarioId)
+
+        if (error || !rows) return []
+
+        return (rows as any[])
+            .filter((r) => r.modulos?.activo !== false)
+            .map((r) => ({
+                modulo_nombre: r.modulos?.nombre || null,
+                modulo_ruta: r.modulos?.ruta || null,
+                permiso_codigo: r.permisos?.codigo || null,
+                permiso_nombre: r.permisos?.nombre || null,
+            }))
+    } catch (e) {
+        console.warn('Error obteniendo permisos puntuales de usuario:', e)
+        return []
+    }
+}
+
+function combinarPermisosSinDuplicar(base: any[], extra: any[]) {
+    const vistos = new Set(base.map((p) => `${p.modulo_nombre}:${p.permiso_codigo}`))
+    const combinados = [...base]
+    for (const p of extra) {
+        const key = `${p.modulo_nombre}:${p.permiso_codigo}`
+        if (!vistos.has(key)) {
+            vistos.add(key)
+            combinados.push(p)
+        }
+    }
+    return combinados
 }
 
 /**

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, X, UserCheck, UserPlus, Shield, Images } from "lucide-react"
+import { Activity, Users, BarChart3, Calendar, Settings, FileText, Building2, Menu, X, UserCheck, UserPlus, Shield, Images, MapPin, ClipboardList } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useModulosAccesibles } from "@/lib/hooks/use-modulos-accesibles"
 
@@ -13,6 +13,8 @@ const MENU_ITEMS = [
   { label: "Fotos Masivas", href: "/dashboard/fotos-masivas", icon: Images },
   { label: "Módulo Coordinador", href: "/dashboard/coordinador", icon: UserCheck },
   { label: "Módulo Militante", href: "/dashboard/militante", icon: UserPlus },
+  { label: "Visitas y Reuniones", href: "/dashboard/visitas-reuniones", icon: MapPin },
+  { label: "Informes", href: "/dashboard/informes", icon: ClipboardList },
   { label: "Módulo Dirigente", href: "/dashboard/dirigente", icon: UserCheck },
   { label: "Gestión Gerencial", href: "/dashboard/gestion-gerencial", icon: BarChart3 },
   { label: "Alistamiento Debate", href: "/dashboard/debate", icon: FileText },
