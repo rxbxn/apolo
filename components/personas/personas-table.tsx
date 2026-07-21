@@ -37,6 +37,7 @@ import { useMilitantes } from '@/lib/hooks/use-militantes'
 import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
 import { useCatalogos } from "@/lib/hooks/use-catalogos"
 import { usePermisos } from "@/lib/hooks/use-permisos"
+import { useEsSuperAdmin } from "@/lib/hooks/use-es-super-admin"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { PermisosModal } from "./permisos-modal"
@@ -93,6 +94,7 @@ export function PersonasTable() {
   const { listar, eliminar, loading: personasLoading, cambiarEstado, actualizar, obtenerPorId: obtenerUsuarioPorId } = usePersonas()
   const { ciudades, loading: catalogosLoading } = useCatalogos()
   const { permisos } = usePermisos("Módulo Personas")
+  const { esSuperAdmin } = useEsSuperAdmin()
 
   const [personas, setPersonas] = useState<Usuario[]>([])
   const [totalCount, setTotalCount] = useState(0)
@@ -394,7 +396,14 @@ export function PersonasTable() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
-                              {permisos?.actualizar ? (
+                              {/* Cambiar el estado (activo/inactivo/suspendido) es
+                                  exclusivo de Super Admin — un coordinador puede
+                                  crear personas, pero quedan inactivas hasta que
+                                  un Super Admin las revise y active acá. Antes
+                                  esto dependía solo del permiso genérico
+                                  "actualizar" de Módulo Personas, que cualquier
+                                  rol podía tener otorgado. */}
+                              {esSuperAdmin ? (
                                 <Select
                                   value={persona.estado}
                                   onValueChange={async (value) => {

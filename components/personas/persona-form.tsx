@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { usePersonas } from "@/lib/hooks/use-personas"
 import { useUsuario } from "@/lib/hooks/use-usuario"
+import { useEsSuperAdmin } from "@/lib/hooks/use-es-super-admin"
 
 import { FotoPerfilUpload } from "./foto-perfil-upload"
 import { DatosPersonalesSection } from "./form-sections/datos-personales"
@@ -132,6 +133,7 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
   const router = useRouter()
   const { crear, actualizar } = usePersonas()
   const { usuario: usuarioActual } = useUsuario()
+  const { esSuperAdmin } = useEsSuperAdmin()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTabIndex, setActiveTabIndex] = useState(0)
   const activeTab = SECTIONS[activeTabIndex].id
@@ -248,12 +250,22 @@ export function PersonaForm({ initialData, isEditing = false }: PersonaFormProps
           console.debug('No se pudo sincronizar militante:', e)
         }
       } else {
+        // Regla de negocio: si quien crea NO es Super Admin (ej. un
+        // coordinador dando de alta a alguien de su equipo), la persona
+        // queda inactiva hasta que un Super Admin la revise y active desde
+        // el listado de Personas. Un Super Admin sí puede crearla ya activa
+        // (o con el estado que haya elegido en el formulario).
+        const estadoFinal = esSuperAdmin ? (data.estado || 'activo') : 'inactivo'
         await crear({
           ...personaData,
           creado_por: usuarioActual?.id,
-          estado: data.estado || 'activo',
+          estado: estadoFinal,
         } as any)
-        toast.success("Persona creada correctamente")
+        toast.success(
+          esSuperAdmin
+            ? "Persona creada correctamente"
+            : "Persona creada correctamente — queda INACTIVA hasta que un Super Admin la active"
+        )
       }
 
       router.push("/dashboard/personas")
