@@ -22,13 +22,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight, Shield, Edit3, Cloud } from "lucide-react"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight, Shield, Edit3, Cloud, Check, ChevronsUpDown } from "lucide-react"
 import { usePersonas, type PersonaEnriquecida } from "@/lib/hooks/use-personas"
 import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
 import { useMilitantes } from '@/lib/hooks/use-militantes'
+import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
 import { useCatalogos } from "@/lib/hooks/use-catalogos"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 import { PermisosModal } from "./permisos-modal"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
@@ -111,6 +121,37 @@ export function PersonasTable() {
   const { actualizar: actualizarMilitante, obtenerPorId } = useMilitantes()
   const { listar: listarTiposMilitante } = useTiposMilitante()
   const [tiposMilitante, setTiposMilitante] = useState<any[]>([])
+  const { buscarCoordinadores } = useCoordinadores()
+
+  // Selector de coordinador dentro del modal "Información Militante" — solo
+  // se habilita para elegir cuando la persona es nueva/no tiene coordinador
+  // asignado todavía. Si ya tiene uno, queda de solo lectura y se puede
+  // pulsar "Cambiar" para reasignarlo a propósito.
+  const [openCoordinadorCombo, setOpenCoordinadorCombo] = useState(false)
+  const [coordinadorSearch, setCoordinadorSearch] = useState("")
+  const [coordinadoresOpciones, setCoordinadoresOpciones] = useState<any[]>([])
+  const [loadingCoordinadoresModal, setLoadingCoordinadoresModal] = useState(false)
+  const [editarCoordinador, setEditarCoordinador] = useState(false)
+
+  useEffect(() => {
+    if (coordinadorSearch.length < 3) {
+      setCoordinadoresOpciones([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      setLoadingCoordinadoresModal(true)
+      try {
+        const results = await buscarCoordinadores(coordinadorSearch)
+        setCoordinadoresOpciones(results || [])
+      } catch (e) {
+        console.error('Error buscando coordinadores:', e)
+        setCoordinadoresOpciones([])
+      } finally {
+        setLoadingCoordinadoresModal(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [coordinadorSearch, buscarCoordinadores])
 
   // Cargar tipos de militante al montar para usar en el modal
   useEffect(() => {
@@ -494,10 +535,20 @@ export function PersonasTable() {
 
                                       console.log('✅ Setting militante data:', merged)
                                       setMilitanteData(merged)
+                                      setEditarCoordinador(false)
+                                      setCoordinadorSearch("")
                                       setMilitanteModalOpen(true)
                                     } else {
-                                      // No militante — preload desde usuarioRow o persona (ya en memoria)
-                                      const empty: any = { usuario_id: persona.id }
+                                      // No militante — preload desde usuarioRow o persona (ya en memoria).
+                                      // Se incluyen nombres/apellidos/numero_documento aquí también: antes
+                                      // solo se traían cuando SÍ había militante, y este modal (para una
+                                      // persona nueva) se abría con esos campos en blanco.
+                                      const empty: any = {
+                                        usuario_id: persona.id,
+                                        nombres: (usuarioRow || (persona as any))?.nombres || (persona as any).nombres || '',
+                                        apellidos: (usuarioRow || (persona as any))?.apellidos || (persona as any).apellidos || '',
+                                        numero_documento: (usuarioRow || (persona as any))?.numero_documento || (persona as any).numero_documento || '',
+                                      }
                                       const esrc = usuarioRow || (persona as any)
                                       empty.compromiso_marketing = esrc?.compromiso_marketing != null ? String(esrc.compromiso_marketing) : ''
                                       empty.compromiso_cautivo   = esrc?.compromiso_cautivo   != null ? String(esrc.compromiso_cautivo)   : ''
@@ -509,13 +560,20 @@ export function PersonasTable() {
 
                                       console.log('✅ Setting empty militante data:', empty)
                                       setMilitanteData(empty)
+                                      // Persona nueva sin militante todavía → nunca tiene coordinador
+                                      // asignado, así que el selector arranca habilitado directamente.
+                                      setEditarCoordinador(true)
+                                      setCoordinadorSearch("")
                                       setMilitanteModalOpen(true)
                                     }
                                   } catch (e) {
                                     console.error('❌ Error fetching militante summary from table:', e)
                                     // Show error but still try to open modal with minimal data
-                                    const fallbackData: any = { 
-                                      usuario_id: persona.id, 
+                                    const fallbackData: any = {
+                                      usuario_id: persona.id,
+                                      nombres: (persona as any).nombres || '',
+                                      apellidos: (persona as any).apellidos || '',
+                                      numero_documento: (persona as any).numero_documento || '',
                                       tipo: '',
                                       error: 'Error cargando datos del militante'
                                     }
@@ -525,8 +583,10 @@ export function PersonasTable() {
                                     fallbackData.compromiso_impacto   = fsrc?.compromiso_impacto   != null ? String(fsrc.compromiso_impacto)   : ''
                                     fallbackData.comp_proyecto        = fsrc?.comp_proyecto        != null ? String(fsrc.comp_proyecto)        : ''
                                     setMilitanteData(fallbackData)
+                                    setEditarCoordinador(true)
+                                    setCoordinadorSearch("")
                                     setMilitanteModalOpen(true)
-                                    
+
                                     // Show toast error
                                     toast.error('Error cargando datos del militante')
                                   }
@@ -665,8 +725,73 @@ export function PersonasTable() {
                       <Input value={militanteData.numero_documento || ''} readOnly className="bg-muted/40" />
                     </div>
                     <div>
-                      <div className="mb-1 text-xs text-muted-foreground font-medium">Coordinador</div>
-                      <Input value={militanteData.coordinador_nombre || militanteData.coordinador_id || ''} readOnly className="bg-muted/40" />
+                      <div className="mb-1 text-xs text-muted-foreground font-medium flex items-center justify-between">
+                        <span>Coordinador</span>
+                        {militanteData.coordinador_id && !editarCoordinador && (
+                          <button
+                            type="button"
+                            className="text-xs text-teal-600 hover:underline font-normal normal-case"
+                            onClick={() => setEditarCoordinador(true)}
+                          >
+                            Cambiar
+                          </button>
+                        )}
+                      </div>
+                      {(!militanteData.coordinador_id || editarCoordinador) ? (
+                        <Popover open={openCoordinadorCombo} onOpenChange={setOpenCoordinadorCombo}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between font-normal"
+                            >
+                              <span className={cn("truncate", !militanteData.coordinador_id && "text-muted-foreground")}>
+                                {militanteData.coordinador_nombre || "Seleccionar coordinador..."}
+                              </span>
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[320px] p-0" align="start">
+                            <Command shouldFilter={false}>
+                              <CommandInput
+                                placeholder="Buscar coordinador (mín. 3 letras)..."
+                                value={coordinadorSearch}
+                                onValueChange={setCoordinadorSearch}
+                              />
+                              <CommandEmpty>
+                                {coordinadorSearch.length < 3
+                                  ? "Escribe al menos 3 letras"
+                                  : loadingCoordinadoresModal
+                                    ? "Buscando..."
+                                    : "No se encontraron coordinadores"}
+                              </CommandEmpty>
+                              <CommandGroup className="max-h-64 overflow-y-auto">
+                                {coordinadoresOpciones.map((c: any) => (
+                                  <CommandItem
+                                    key={c.coordinador_id}
+                                    value={c.coordinador_id}
+                                    onSelect={() => {
+                                      setMilitanteData((s: any) => ({
+                                        ...s,
+                                        coordinador_id: c.coordinador_id,
+                                        coordinador_nombre: `${c.nombres || ''} ${c.apellidos || ''}`.trim(),
+                                      }))
+                                      setOpenCoordinadorCombo(false)
+                                      setEditarCoordinador(false)
+                                    }}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4", militanteData.coordinador_id === c.coordinador_id ? "opacity-100" : "opacity-0")} />
+                                    {`${c.nombres || ''} ${c.apellidos || ''}`.trim() || c.email}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                      ) : (
+                        <Input value={militanteData.coordinador_nombre || militanteData.coordinador_id || ''} readOnly className="bg-muted/40" />
+                      )}
                     </div>
                     <div>
                       <div className="mb-1 text-xs text-muted-foreground font-medium">Marketing</div>

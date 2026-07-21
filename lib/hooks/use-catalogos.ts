@@ -12,6 +12,35 @@ type TipoReferencia = Database['public']['Tables']['tipos_referencia']['Row']
 type NivelEscolaridad = Database['public']['Tables']['niveles_escolaridad']['Row']
 type TipoVivienda = Database['public']['Tables']['tipos_vivienda']['Row']
 
+// Los catálogos (ciudades, localidades, barrios, zonas, etc.) vienen de
+// importaciones/migraciones históricas y a veces terminan con filas
+// duplicadas — mismo nombre, distinto id. Eso hace que un select muestre
+// "10 DE MARZO" o "BARRANQUILLA" repetido muchas veces. Se deduplica por
+// nombre (sin distinguir mayúsculas/espacios) ANTES de guardarlo en el
+// estado, quedándose con la primera fila — así ningún select del formulario
+// vuelve a mostrar la misma opción más de una vez, sin importar qué tan
+// sucio venga el catálogo real.
+// `clavePadre` opcional: para localidades/barrios el nombre SÍ puede
+// repetirse legítimamente entre ciudades distintas (ej. una localidad
+// "NORTE" en dos municipios) — ahí se deduplica por nombre+padre, no por
+// nombre solo, para no fusionar por error opciones de ciudades diferentes.
+function dedupePorNombre<T extends { nombre?: string | null }>(
+    filas: T[],
+    clavePadre?: (fila: T) => string | null | undefined,
+): T[] {
+    const vistos = new Set<string>()
+    const resultado: T[] = []
+    for (const fila of filas) {
+        const nombre = (fila.nombre ?? '').trim().toUpperCase()
+        const padre = clavePadre ? (clavePadre(fila) ?? '') : ''
+        const clave = `${padre}::${nombre}`
+        if (nombre && vistos.has(clave)) continue
+        if (nombre) vistos.add(clave)
+        resultado.push(fila)
+    }
+    return resultado
+}
+
 export function useCatalogos() {
     const [ciudades, setCiudades] = useState<Ciudad[]>([])
     const [localidades, setLocalidades] = useState<Localidad[]>([])
@@ -48,13 +77,13 @@ export function useCatalogos() {
                 supabase.from('tipos_vivienda').select('*').eq('activo', true).order('nombre'),
             ])
 
-            if (ciudadesRes.data) setCiudades(ciudadesRes.data)
-            if (localidadesRes.data) setLocalidades(localidadesRes.data)
-            if (barriosRes.data) setBarrios(barriosRes.data)
-            if (zonasRes.data) setZonas(zonasRes.data)
-            if (tiposRefRes.data) setTiposReferencia(tiposRefRes.data)
-            if (nivelesEscRes.data) setNivelesEscolaridad(nivelesEscRes.data)
-            if (tiposVivRes.data) setTiposVivienda(tiposVivRes.data)
+            if (ciudadesRes.data) setCiudades(dedupePorNombre(ciudadesRes.data))
+            if (localidadesRes.data) setLocalidades(dedupePorNombre(localidadesRes.data, (l: any) => l.ciudad_id))
+            if (barriosRes.data) setBarrios(dedupePorNombre(barriosRes.data, (b: any) => b.localidad_id))
+            if (zonasRes.data) setZonas(dedupePorNombre(zonasRes.data))
+            if (tiposRefRes.data) setTiposReferencia(dedupePorNombre(tiposRefRes.data))
+            if (nivelesEscRes.data) setNivelesEscolaridad(dedupePorNombre(nivelesEscRes.data))
+            if (tiposVivRes.data) setTiposVivienda(dedupePorNombre(tiposVivRes.data))
         } catch (error) {
             console.error('Error cargando catálogos:', error)
         } finally {

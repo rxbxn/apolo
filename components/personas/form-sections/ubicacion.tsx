@@ -26,13 +26,11 @@ interface UbicacionSectionProps {
 export function UbicacionSection({ form }: UbicacionSectionProps) {
     const {
         ciudades,
-        localidades,
-        barrios,
         zonas,
         puestosVotacion,
         loading,
-        fetchLocalidades,
-        fetchBarrios,
+        getLocalidadesPorCiudad,
+        getBarriosPorLocalidad,
         fetchPuestosVotacion,
     } = useCatalogos()
 
@@ -41,18 +39,19 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
     const localidadId = form.watch("localidad_id")
     const zonaId = form.watch("zona_id")
 
+    // Antes se mostraban TODAS las localidades/barrios del catálogo sin
+    // filtrar por ciudad/localidad seleccionada — por eso se veían opciones
+    // que parecían repetidas o de otra ciudad. Ahora sí se filtra por el
+    // padre elegido, y además el catálogo ya viene deduplicado por nombre
+    // desde useCatalogos.
+    const localidades = ciudadId ? getLocalidadesPorCiudad(ciudadId) : []
+    const barrios = localidadId ? getBarriosPorLocalidad(localidadId) : []
+
     useEffect(() => {
         if (ciudadId) {
-            fetchLocalidades(ciudadId)
             fetchPuestosVotacion(ciudadId)
         }
     }, [ciudadId])
-
-    useEffect(() => {
-        if (localidadId) {
-            fetchBarrios(localidadId)
-        }
-    }, [localidadId])
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -63,7 +62,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                     <FormItem className="md:col-span-2">
                         <FormLabel>Lugar de Nacimiento</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Barranquilla" {...field} value={field.value ?? ""} />
+                            <Input placeholder="Ej: Barranquilla" autoComplete="off" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -77,7 +76,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                     <FormItem className="md:col-span-2">
                         <FormLabel>Dirección de Residencia</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: Cra 45 # 123 - 45" {...field} value={field.value ?? ""} />
+                            <Input placeholder="Ej: Cra 45 # 123 - 45" autoComplete="off" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -141,7 +140,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Localidad </FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: soledad" {...field} value={field.value ?? ""} />
+                                    <Input placeholder="Ej: soledad" autoComplete="off" {...field} value={field.value ?? ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -155,7 +154,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                             <FormItem>
                                 <FormLabel>Nombre Barrio</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Ej: Santa Bárbara" {...field} value={field.value ?? ""} />
+                                    <Input placeholder="Ej: Santa Bárbara" autoComplete="off" {...field} value={field.value ?? ""} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -245,7 +244,7 @@ export function UbicacionSection({ form }: UbicacionSectionProps) {
                     <FormItem>
                         <FormLabel>Ubicación (Código FRV etc)</FormLabel>
                         <FormControl>
-                            <Input placeholder="Ej: FRV" {...field} value={field.value ?? ""} />
+                            <Input placeholder="Ej: FRV" autoComplete="off" {...field} value={field.value ?? ""} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>

@@ -436,11 +436,16 @@ export async function PATCH(request: NextRequest) {
             }
             resultData = data
         } else {
-            // Create (Upsert case)
-            if (!usuario_id || !tipo) {
-                return NextResponse.json({ error: 'Militante no encontrado y faltan datos para crear uno nuevo (usuario_id y tipo)' }, { status: 404 })
+            // Create (Upsert case). Solo usuario_id es realmente
+            // indispensable (sin eso no se sabe de quién es el registro) —
+            // "tipo" es un dato secundario que NO debe bloquear guardar un
+            // militante nuevo si todavía no se eligió (ej. se está asignando
+            // solo el coordinador primero). Por eso ya no se exige aquí; el
+            // insertPayload de abajo lo completa con 'Sin tipo' si vino vacío.
+            if (!usuario_id) {
+                return NextResponse.json({ error: 'Falta usuario_id para crear el militante' }, { status: 404 })
             }
-            
+
             const insertPayload = {
                 ...updatePayload,
                 usuario_id,

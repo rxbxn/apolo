@@ -114,9 +114,19 @@ export function usePersonas() {
         try {
             setLoading(true)
             setError(null)
+            // La columna "email" de `usuarios` es NOT NULL en la base real
+            // (no lo era en el esquema propuesto), así que enviar null o no
+            // enviarla del todo hace que Postgres rechace el insert entero —
+            // aunque el formulario nunca la haya pedido como obligatoria. Se
+            // fuerza a "" cuando no venga con valor, para no bloquear la
+            // creación de personas sin correo.
+            const personaConEmail: any = { ...persona }
+            if (personaConEmail.email === null || personaConEmail.email === undefined) {
+                personaConEmail.email = ''
+            }
             const { data, error: insertError } = await (supabase as any)
                 .from('usuarios')
-                .insert(persona)
+                .insert(personaConEmail)
                 .select()
                 .single()
             if (insertError) throw insertError
@@ -134,9 +144,16 @@ export function usePersonas() {
         try {
             setLoading(true)
             setError(null)
+            // Mismo caso que en crear(): si el update trae "email" en null
+            // (campo vaciado en el formulario), Postgres rechaza todo el
+            // update por el constraint NOT NULL — se normaliza a "".
+            const personaConEmail: any = { ...persona }
+            if ('email' in personaConEmail && personaConEmail.email == null) {
+                personaConEmail.email = ''
+            }
             const { data, error: updateError } = await (supabase as any)
                 .from('usuarios')
-                .update(persona)
+                .update(personaConEmail)
                 .eq('id', id)
                 .select()
                 .single()
