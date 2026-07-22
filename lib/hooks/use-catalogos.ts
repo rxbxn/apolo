@@ -101,6 +101,14 @@ export function useCatalogos() {
         return barrios.filter((b) => b.localidad_id === localidadId)
     }
 
+    // Filtrar barrios directo por ciudad (sin pasar por localidad) — para
+    // filtros simples de 2 niveles (Ciudad → Barrio) como en los listados
+    // de Personas/Militantes/Coordinadores/Dirigentes. La tabla barrios
+    // tiene tanto localidad_id como ciudad_id, así que esto es válido.
+    function getBarriosPorCiudad(ciudadId: string) {
+        return barrios.filter((b: any) => b.ciudad_id === ciudadId)
+    }
+
     // Stub para puestos de votación (pendiente de crear tabla)
     const [puestosVotacion, setPuestosVotacion] = useState<any[]>([])
 
@@ -122,6 +130,7 @@ export function useCatalogos() {
         loading,
         getLocalidadesPorCiudad,
         getBarriosPorLocalidad,
+        getBarriosPorCiudad,
         fetchLocalidades: (id: string) => getLocalidadesPorCiudad(id), // Helper for consistency
         fetchBarrios: (id: string) => getBarriosPorLocalidad(id), // Helper for consistency
         fetchPuestosVotacion, // Added to fix crash

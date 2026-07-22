@@ -11,12 +11,21 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { supabase } from "@/lib/supabase/client"
 import { useUsuario } from "@/lib/hooks/use-usuario"
 import { usePermisos } from "@/lib/hooks/use-permisos"
+import { useCatalogos } from "@/lib/hooks/use-catalogos"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 const PAGE_SIZE = 20
 
 export function DirigentesTable() {
     const { usuario } = useUsuario()
     const { permisos, loading: permisosLoading } = usePermisos("Módulo Dirigente")
+    const { ciudades, getBarriosPorCiudad } = useCatalogos()
 
     const [dirigentes, setDirigentes]   = useState<any[]>([])
     const [total, setTotal]             = useState(0)
@@ -24,6 +33,16 @@ export function DirigentesTable() {
     const [isLoading, setIsLoading]     = useState(false)
     const [pendingDelete, setPendingDelete] = useState<any | null>(null)
     const { isOpen, config, handleCancel, setIsOpen } = useConfirm()
+
+    // Filtro por Ciudad/Barrio del dirigente (persona listada). Esta tabla
+    // ya carga todas las relaciones de una vez (tabla chica), así que el
+    // filtro se aplica en memoria, igual que en la pantalla equivalente APK.
+    const [ciudadFilter, setCiudadFilter] = useState<string>("todos")
+    const [barrioFilter, setBarrioFilter] = useState<string>("todos")
+
+    useEffect(() => {
+        setBarrioFilter("todos")
+    }, [ciudadFilter])
 
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -62,7 +81,30 @@ export function DirigentesTable() {
                 return `${c.nombres ?? ''} ${c.apellidos ?? ''}`.trim() || c.numero_documento || id
             }
 
-            const todos = rels.map((r: any) => ({
+            // Resolver ciudad_id/barrio_id del dirigente (para el filtro de
+            // ubicación) — v_coordinadores_completo no confirma tener esas
+            // columnas, así que se resuelven vía coordinadores → usuarios,
+            // igual que en la APK (dirigentes.service.ts).
+            let ubicacionMap: Record<string, { ciudad_id: string | null; barrio_id: string | null }> = {}
+            if (ciudadFilter !== "todos" || barrioFilter !== "todos") {
+                const dirigenteIds = [...new Set(rels.map((r: any) => r.id_dirigente).filter(Boolean))]
+                const { data: coordRows } = await supabase
+                    .from('coordinadores')
+                    .select('id, usuario_id')
+                    .in('id', dirigenteIds)
+                const usuarioIds = [...new Set((coordRows || []).map((c: any) => c.usuario_id).filter(Boolean))]
+                const { data: usuariosRows } = usuarioIds.length
+                    ? await supabase.from('usuarios').select('id, ciudad_id, barrio_id').in('id', usuarioIds)
+                    : { data: [] as any[] }
+                const usuarioUbicacionMap: Record<string, any> = {}
+                ;(usuariosRows || []).forEach((u: any) => { usuarioUbicacionMap[u.id] = u })
+                ;(coordRows || []).forEach((c: any) => {
+                    const u = usuarioUbicacionMap[c.usuario_id]
+                    ubicacionMap[c.id] = { ciudad_id: u?.ciudad_id ?? null, barrio_id: u?.barrio_id ?? null }
+                })
+            }
+
+            let todos = rels.map((r: any) => ({
                 id:                 r.id,                    // PK real de dirigentes (bigint) — antes se usaba
                                                                // r.id_dirigente por error, que se repite una vez
                                                                // por cada coordinador que reporta al mismo
@@ -73,7 +115,15 @@ export function DirigentesTable() {
                 dirigente_nombre:   nombre(r.id_dirigente),
                 coordinador_nombre: nombre(r.id_coordinador),
                 estado:             coordMap[r.id_dirigente]?.estado ?? 'activo',
+                ciudad_id:          ubicacionMap[r.id_dirigente]?.ciudad_id ?? null,
+                barrio_id:          ubicacionMap[r.id_dirigente]?.barrio_id ?? null,
             }))
+
+            if (barrioFilter !== "todos") {
+                todos = todos.filter((d) => d.barrio_id === barrioFilter)
+            } else if (ciudadFilter !== "todos") {
+                todos = todos.filter((d) => d.ciudad_id === ciudadFilter)
+            }
 
             todos.sort((a, b) => a.dirigente_nombre.localeCompare(b.dirigente_nombre))
 
@@ -86,7 +136,10 @@ export function DirigentesTable() {
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [ciudadFilter, barrioFilter])
+
+    // Volver a página 0 cuando cambia el filtro de ubicación.
+    useEffect(() => { setPage(0) }, [ciudadFilter, barrioFilter])
 
     useEffect(() => { load(page) }, [load, page])
 
@@ -139,6 +192,44 @@ export function DirigentesTable() {
     // ── Render ──────────────────────────────────────────────────
     return (
         <>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <Select
+                value={ciudadFilter}
+                onValueChange={setCiudadFilter}
+            >
+                <SelectTrigger>
+                    <SelectValue placeholder="Ciudad" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="todos">Todas las ciudades</SelectItem>
+                    {ciudades.map((ciudad) => (
+                        <SelectItem key={ciudad.id} value={ciudad.id}>
+                            {ciudad.nombre}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+
+            <Select
+                value={barrioFilter}
+                onValueChange={setBarrioFilter}
+                disabled={ciudadFilter === "todos"}
+            >
+                <SelectTrigger>
+                    <SelectValue placeholder="Barrio" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="todos">
+                        {ciudadFilter === "todos" ? "Elige una ciudad primero" : "Todos los barrios"}
+                    </SelectItem>
+                    {(ciudadFilter !== "todos" ? getBarriosPorCiudad(ciudadFilter) : []).map((barrio) => (
+                        <SelectItem key={barrio.id} value={barrio.id}>
+                            {barrio.nombre}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
         <Card className="border-0 shadow-sm">
             <CardContent className="p-0">
                 {isLoading ? (

@@ -13,6 +13,7 @@ export interface FiltrosPersonas {
     busqueda?:       string
     estado?:         string
     ciudad_id?:      string
+    barrio_id?:      string
     tipo_militante?: string
 }
 
@@ -65,6 +66,7 @@ export function usePersonas() {
             if (filtros.busqueda)       params.set('busqueda',       filtros.busqueda)
             if (filtros.estado)         params.set('estado',         filtros.estado)
             if (filtros.ciudad_id)      params.set('ciudad_id',      filtros.ciudad_id)
+            if (filtros.barrio_id)      params.set('barrio_id',      filtros.barrio_id)
             if (filtros.tipo_militante) params.set('tipo_militante', filtros.tipo_militante)
 
             const res = await fetch(`/api/personas?${params.toString()}`)

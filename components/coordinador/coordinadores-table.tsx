@@ -18,6 +18,7 @@ import { Search, Edit, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide
 import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
 import { usePermisos } from "@/lib/hooks/use-permisos"
 import { useConfirm } from "@/lib/hooks/use-confirm"
+import { useCatalogos } from "@/lib/hooks/use-catalogos"
 import { toast } from "sonner"
 
 const getStatusColor = (status: string) => {
@@ -34,6 +35,7 @@ export function CoordinadoresTable() {
     const { listar, eliminar, loading } = useCoordinadores()
     const { permisos, loading: permisosLoading } = usePermisos("Módulo Coordinador")
     const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
+    const { ciudades, getBarriosPorCiudad } = useCatalogos()
 
     const [coordinadores, setCoordinadores] = useState<any[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -43,12 +45,19 @@ export function CoordinadoresTable() {
     // Filtros
     const [search, setSearch] = useState("")
     const [estadoFilter, setEstadoFilter] = useState<string>("todos")
+    const [ciudadFilter, setCiudadFilter] = useState<string>("todos")
+    const [barrioFilter, setBarrioFilter] = useState<string>("todos")
 
     const pageSize = 10
 
+    // Al cambiar de ciudad se resetea el barrio elegido.
+    useEffect(() => {
+        setBarrioFilter("todos")
+    }, [ciudadFilter])
+
     useEffect(() => {
         cargarCoordinadores()
-    }, [currentPage, search, estadoFilter])
+    }, [currentPage, search, estadoFilter, ciudadFilter, barrioFilter])
 
     async function cargarCoordinadores() {
         try {
@@ -56,6 +65,8 @@ export function CoordinadoresTable() {
 
             if (search) filtros.busqueda = search
             if (estadoFilter !== "todos") filtros.estado = estadoFilter
+            if (ciudadFilter !== "todos") filtros.ciudad_id = ciudadFilter
+            if (barrioFilter !== "todos") filtros.barrio_id = barrioFilter
 
             const result = await listar(filtros, currentPage, pageSize)
 
@@ -142,6 +153,49 @@ export function CoordinadoresTable() {
                         <SelectItem value="activo">Activo</SelectItem>
                         <SelectItem value="inactivo">Inactivo</SelectItem>
                         <SelectItem value="suspendido">Suspendido</SelectItem>
+                    </SelectContent>
+                </Select>
+
+                <Select
+                    value={ciudadFilter}
+                    onValueChange={(value) => {
+                        setCiudadFilter(value)
+                        setCurrentPage(1)
+                    }}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Ciudad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="todos">Todas las ciudades</SelectItem>
+                        {ciudades.map((ciudad) => (
+                            <SelectItem key={ciudad.id} value={ciudad.id}>
+                                {ciudad.nombre}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                <Select
+                    value={barrioFilter}
+                    onValueChange={(value) => {
+                        setBarrioFilter(value)
+                        setCurrentPage(1)
+                    }}
+                    disabled={ciudadFilter === "todos"}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Barrio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="todos">
+                            {ciudadFilter === "todos" ? "Elige una ciudad primero" : "Todos los barrios"}
+                        </SelectItem>
+                        {(ciudadFilter !== "todos" ? getBarriosPorCiudad(ciudadFilter) : []).map((barrio) => (
+                            <SelectItem key={barrio.id} value={barrio.id}>
+                                {barrio.nombre}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>

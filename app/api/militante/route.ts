@@ -13,6 +13,11 @@ export async function GET(request: NextRequest) {
         const estado = (searchParams.get('estado') || '').trim()
         const tipo = (searchParams.get('tipo') || '').trim()
         const coordinadorId = (searchParams.get('coordinador_id') || '').trim()
+        // La ubicación vive en usuarios, no en militantes — se filtra abajo
+        // acotando primero usuariosQuery y luego excluyendo de la lista
+        // combinada a cualquier militante cuyo usuario haya quedado fuera.
+        const ciudadIdFiltro = (searchParams.get('ciudad_id') || '').trim()
+        const barrioIdFiltro = (searchParams.get('barrio_id') || '').trim()
 
         // 1. Obtener los tipos de militante para mapeo
         const { data: tiposData, error: tiposError } = await (adminClient as any)
@@ -89,6 +94,13 @@ export async function GET(request: NextRequest) {
             usuariosQuery = aplicarBusquedaPorNombre(usuariosQuery, busqueda)
         }
 
+        if (ciudadIdFiltro) {
+            usuariosQuery = usuariosQuery.eq('ciudad_id', ciudadIdFiltro)
+        }
+        if (barrioIdFiltro) {
+            usuariosQuery = usuariosQuery.eq('barrio_id', barrioIdFiltro)
+        }
+
         let usuariosData: any[] = []
         try {
             usuariosData = await fetchAll(usuariosQuery)
@@ -128,22 +140,28 @@ export async function GET(request: NextRequest) {
         }))
 
         // Enriquecer militantes reales con datos de usuario para poder buscar correctamente
-        // Los campos nombres/apellidos/numero_documento no existen en la tabla militantes
-        const militantesEnriquecidos = militantesExistentes.map((m: any) => {
-            const u = usuariosMapEarly.get(m.usuario_id)
-            if (u) {
-                return {
-                    ...m,
-                    nombres: u.nombres,
-                    apellidos: u.apellidos,
-                    numero_documento: u.numero_documento,
-                    tipo_documento: u.tipo_documento,
-                    celular: u.celular,
-                    usuario_email: u.email,
+        // Los campos nombres/apellidos/numero_documento no existen en la tabla militantes.
+        // Si hay filtro de ciudad/barrio, usuariosMapEarly ya viene acotado a esa
+        // ubicación (usuariosQuery se filtró arriba), así que se descartan acá
+        // los militantes reales cuyo usuario haya quedado fuera de ese mapa.
+        const filtroUbicacionActivo = !!(ciudadIdFiltro || barrioIdFiltro)
+        const militantesEnriquecidos = militantesExistentes
+            .filter((m: any) => !filtroUbicacionActivo || usuariosMapEarly.has(m.usuario_id))
+            .map((m: any) => {
+                const u = usuariosMapEarly.get(m.usuario_id)
+                if (u) {
+                    return {
+                        ...m,
+                        nombres: u.nombres,
+                        apellidos: u.apellidos,
+                        numero_documento: u.numero_documento,
+                        tipo_documento: u.tipo_documento,
+                        celular: u.celular,
+                        usuario_email: u.email,
+                    }
                 }
-            }
-            return m
-        })
+                return m
+            })
 
         // 5. Combinar y ordenar (alfabético por nombre — ver [[feedback-orden-alfabetico]])
         let allMilitantes = [...militantesEnriquecidos, ...virtualMilitantes]

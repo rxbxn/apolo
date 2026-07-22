@@ -20,6 +20,7 @@ import { usePermisos } from "@/lib/hooks/use-permisos"
 import { useConfirm } from "@/lib/hooks/use-confirm"
 import { useCoordinadores } from "@/lib/hooks/use-coordinadores"
 import { useTiposMilitante } from "@/lib/hooks/use-tipos-militante"
+import { useCatalogos } from "@/lib/hooks/use-catalogos"
 import { toast } from "sonner"
 
 const getStatusColor = (status: string) => {
@@ -38,6 +39,7 @@ export function MilitantesTable() {
     const { confirm, isOpen, config, handleConfirm, handleCancel, setIsOpen } = useConfirm()
     const { listar: listarCoordinadores } = useCoordinadores()
     const { listar: listarTiposMilitante } = useTiposMilitante()
+    const { ciudades, getBarriosPorCiudad } = useCatalogos()
 
     const [militantes, setMilitantes] = useState<any[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -49,6 +51,8 @@ export function MilitantesTable() {
     const [estadoFilter, setEstadoFilter] = useState<string>("todos")
     const [tipoFilter, setTipoFilter] = useState<string>("todos")
     const [coordinadorFilter, setCoordinadorFilter] = useState<string>("todos")
+    const [ciudadFilter, setCiudadFilter] = useState<string>("todos")
+    const [barrioFilter, setBarrioFilter] = useState<string>("todos")
 
     // Datos para filtros
     const [coordinadores, setCoordinadores] = useState<any[]>([])
@@ -62,8 +66,16 @@ export function MilitantesTable() {
         setEstadoFilter("todos")
         setTipoFilter("todos")
         setCoordinadorFilter("todos")
+        setCiudadFilter("todos")
+        setBarrioFilter("todos")
         setCurrentPage(1)
     }
+
+    // Al cambiar de ciudad se resetea el barrio elegido, para no dejar
+    // seleccionado un barrio que ya no corresponde a la ciudad nueva.
+    useEffect(() => {
+        setBarrioFilter("todos")
+    }, [ciudadFilter])
 
     // Cargar datos iniciales
     useEffect(() => {
@@ -72,7 +84,7 @@ export function MilitantesTable() {
 
     useEffect(() => {
         cargarMilitantes()
-    }, [currentPage, search, estadoFilter, tipoFilter, coordinadorFilter])
+    }, [currentPage, search, estadoFilter, tipoFilter, coordinadorFilter, ciudadFilter, barrioFilter])
 
     async function cargarDatosIniciales() {
         try {
@@ -98,6 +110,8 @@ export function MilitantesTable() {
             if (estadoFilter !== "todos") filtros.estado = estadoFilter
             if (tipoFilter !== "todos") filtros.tipo = tipoFilter
             if (coordinadorFilter !== "todos") filtros.coordinador_id = coordinadorFilter
+            if (ciudadFilter !== "todos") filtros.ciudad_id = ciudadFilter
+            if (barrioFilter !== "todos") filtros.barrio_id = barrioFilter
 
             const result = await listar(filtros, currentPage, pageSize)
 
@@ -220,6 +234,44 @@ export function MilitantesTable() {
                                         </SelectItem>
                                     )
                                 })}
+                            </SelectContent>
+                        </Select>
+                        <Select value={ciudadFilter} onValueChange={(value) => {
+                            setCiudadFilter(value)
+                            setCurrentPage(1)
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Filtrar por ciudad" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">Todas las ciudades</SelectItem>
+                                {ciudades.map((ciudad) => (
+                                    <SelectItem key={ciudad.id} value={ciudad.id}>
+                                        {ciudad.nombre}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={barrioFilter}
+                            onValueChange={(value) => {
+                                setBarrioFilter(value)
+                                setCurrentPage(1)
+                            }}
+                            disabled={ciudadFilter === "todos"}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Filtrar por barrio" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="todos">
+                                    {ciudadFilter === "todos" ? "Elige una ciudad primero" : "Todos los barrios"}
+                                </SelectItem>
+                                {(ciudadFilter !== "todos" ? getBarriosPorCiudad(ciudadFilter) : []).map((barrio) => (
+                                    <SelectItem key={barrio.id} value={barrio.id}>
+                                        {barrio.nombre}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>

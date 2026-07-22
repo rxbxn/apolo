@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
         const busqueda  = (searchParams.get('busqueda')       || '').trim()
         const estado    = (searchParams.get('estado')         || '').trim()
         const ciudad_id = (searchParams.get('ciudad_id')      || '').trim()
+        const barrio_id = (searchParams.get('barrio_id')      || '').trim()
         const tipoFilt  = (searchParams.get('tipo_militante') || '').trim()
 
         const from = (page - 1) * pageSize
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
             if (busqueda)  query = aplicarBusquedaPorNombre(query, busqueda)
             if (estado)    query = query.eq('estado', estado)
             if (ciudad_id) query = query.eq('ciudad_id', ciudad_id)
+            if (barrio_id) query = query.eq('barrio_id', barrio_id)
             query = query.range(from, to).order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
             const { data: rows, error, count } = await query
@@ -112,6 +114,7 @@ export async function GET(request: NextRequest) {
         if (busqueda)  idQuery = aplicarBusquedaPorNombre(idQuery, busqueda)
         if (estado)    idQuery = idQuery.eq('estado', estado)
         if (ciudad_id) idQuery = idQuery.eq('ciudad_id', ciudad_id)
+        if (barrio_id) idQuery = idQuery.eq('barrio_id', barrio_id)
         idQuery = idQuery.order('nombres', { ascending: true }).order('apellidos', { ascending: true })
 
         const { data: allIdRows, error: idErr } = await idQuery

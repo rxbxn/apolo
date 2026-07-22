@@ -92,7 +92,7 @@ const getRowColor = (status: string) => {
 export function PersonasTable() {
   const router = useRouter()
   const { listar, eliminar, loading: personasLoading, cambiarEstado, actualizar, obtenerPorId: obtenerUsuarioPorId } = usePersonas()
-  const { ciudades, loading: catalogosLoading } = useCatalogos()
+  const { ciudades, loading: catalogosLoading, getBarriosPorCiudad } = useCatalogos()
   const { permisos } = usePermisos("Módulo Personas")
   const { esSuperAdmin } = useEsSuperAdmin()
 
@@ -178,6 +178,12 @@ export function PersonasTable() {
 
   const pageSize = 10
 
+  // Al cambiar de ciudad se resetea el barrio elegido, para no dejar
+  // seleccionado un barrio que ya no corresponde a la ciudad nueva.
+  useEffect(() => {
+    setUbicacionFilter("")
+  }, [ciudadFilter])
+
   useEffect(() => {
     cargarPersonas()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,6 +195,7 @@ export function PersonasTable() {
       if (search) filtros.busqueda = search
       if (estadoFilter !== 'todos') filtros.estado = estadoFilter
       if (ciudadFilter !== 'todos') filtros.ciudad_id = ciudadFilter
+      if (ubicacionFilter) filtros.barrio_id = ubicacionFilter
       if (tipoFilter   !== 'todos') filtros.tipo_militante = tipoFilter
 
       const result = await listar(filtros, currentPage, pageSize)
@@ -287,6 +294,29 @@ export function PersonasTable() {
               {ciudades.map((ciudad) => (
                 <SelectItem key={ciudad.id} value={ciudad.id}>
                   {ciudad.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={ubicacionFilter || "todos"}
+            onValueChange={(value) => {
+              setUbicacionFilter(value === "todos" ? "" : value)
+              setCurrentPage(1)
+            }}
+            disabled={ciudadFilter === "todos"}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Barrio" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">
+                {ciudadFilter === "todos" ? "Elige una ciudad primero" : "Todos los barrios"}
+              </SelectItem>
+              {(ciudadFilter !== "todos" ? getBarriosPorCiudad(ciudadFilter) : []).map((barrio) => (
+                <SelectItem key={barrio.id} value={barrio.id}>
+                  {barrio.nombre}
                 </SelectItem>
               ))}
             </SelectContent>

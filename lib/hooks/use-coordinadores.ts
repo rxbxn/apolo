@@ -33,6 +33,8 @@ interface FiltrosCoordinadores {
     estado?: string
     perfil_id?: string
     tipo?: string
+    ciudad_id?: string
+    barrio_id?: string
 }
 
 interface CrearCoordinadorData {
@@ -110,6 +112,28 @@ export function useCoordinadores() {
 
             if (filtros.perfil_id) {
                 query = query.eq('perfil_id', filtros.perfil_id)
+            }
+
+            // La vista v_coordinadores_completo no confirma tener columnas de
+            // ubicación propias (solo ciudad_nombre para mostrar), así que el
+            // filtro de ciudad/barrio se resuelve igual que en la APK: primero
+            // se buscan los usuario_id que caen en ese barrio/ciudad en la
+            // tabla usuarios (que sí tiene esas columnas) y se filtra la vista
+            // por esos ids.
+            if (filtros.ciudad_id || filtros.barrio_id) {
+                let usuariosQuery = supabase.from('usuarios').select('id')
+                if (filtros.barrio_id) {
+                    usuariosQuery = usuariosQuery.eq('barrio_id', filtros.barrio_id)
+                } else if (filtros.ciudad_id) {
+                    usuariosQuery = usuariosQuery.eq('ciudad_id', filtros.ciudad_id)
+                }
+                const { data: usuariosData, error: usuariosError } = await usuariosQuery
+                if (usuariosError) throw usuariosError
+                const usuarioIds = (usuariosData || []).map((u: any) => u.id)
+                if (usuarioIds.length === 0) {
+                    return { data: [], count: 0, page, pageSize, totalPages: 0 }
+                }
+                query = query.in('usuario_id', usuarioIds)
             }
 
             // Paginación

@@ -32,6 +32,8 @@ interface Militante {
 interface FiltrosMilitantes {
     busqueda?: string
     estado?: string
+    ciudad_id?: string
+    barrio_id?: string
 }
 
 interface CrearMilitanteData {
@@ -77,6 +79,14 @@ export function useMilitantes() {
 
             if (filtros.estado) {
                 params.append('estado', filtros.estado)
+            }
+
+            if (filtros.ciudad_id) {
+                params.append('ciudad_id', filtros.ciudad_id)
+            }
+
+            if (filtros.barrio_id) {
+                params.append('barrio_id', filtros.barrio_id)
             }
 
             const response = await fetch(`/api/militante?${params.toString()}`)
